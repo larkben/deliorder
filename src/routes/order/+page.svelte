@@ -66,6 +66,10 @@
 
 <main class="mobile-layout">
     <h1>Menu</h1>
+    <nav>
+        <a href="/order/new"> Add Item </a>
+        <a href="/orders"> Orders </a>
+    </nav>
 
     {#each data.products as product}
         <div class="product-card" on:click={() => openModal(product)}>
@@ -120,8 +124,10 @@
 </main>
 
 <style>
-    /* MOBILE-FIRST STYLING */
-    .mobile-layout {
+    /* General mobile layout */
+    .mobile-layout,
+    .orders-layout,
+    .add-item-layout {
         padding: 1rem;
         font-family: "Georgia", serif;
         background: #f4e8d8;
@@ -132,16 +138,28 @@
     h2 {
         color: #5d3a1a;
     }
-    h1 {
-        font-size: 1.8rem;
-        margin-bottom: 1rem;
-    }
-    h2 {
-        font-size: 1.4rem;
-        margin-top: 2rem;
+
+    nav {
+        display: flex;
+        justify-content: space-between;
         margin-bottom: 1rem;
     }
 
+    nav a {
+        padding: 0.5rem 1rem;
+        background: #d2691e;
+        color: white;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 1rem;
+    }
+
+    nav a:hover {
+        background: #8b4513;
+    }
+
+    /* Product cards */
     .product-card {
         display: flex;
         justify-content: space-between;
@@ -160,6 +178,7 @@
         color: #8b4513;
     }
 
+    /* Cart section */
     .cart-item {
         display: flex;
         justify-content: space-between;
@@ -183,22 +202,28 @@
         color: #5d3a1a;
     }
 
-    .submit {
-        width: 100%;
-        padding: 1rem;
-        background: #8b4513;
-        color: white;
+    /* Buttons */
+    button {
+        font-size: 1rem; /* >=16px for iOS */
         font-weight: bold;
         border-radius: 8px;
+        padding: 0.75rem;
         border: none;
-        margin-top: 1rem;
-        font-size: 1.2rem;
+        cursor: pointer;
+    }
+
+    .submit,
+    .modal button,
+    nav a {
+        background: #8b4513;
+        color: white;
     }
 
     .submit:disabled {
         background: #a0826d;
     }
 
+    /* Modal */
     .modal-backdrop {
         position: fixed;
         top: 0;
@@ -228,15 +253,6 @@
         margin: 0.75rem 0;
         border: 2px solid #d2b48c;
         border-radius: 6px;
-    }
-
-    .modal button {
-        width: 100%;
-        padding: 0.75rem;
-        background: #8b4513;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-weight: bold;
+        font-size: 1rem; /* fix iOS zoom */
     }
 </style>
