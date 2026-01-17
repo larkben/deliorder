@@ -38,27 +38,21 @@
     {:else}
         <div class="orders-grid">
             {#each orders as order}
-                <div class="order-card" on:click={() => openOrder(order)}>
-                    <div>
-                        <strong
-                            >{new Date(
-                                order.createdAt,
-                            ).toLocaleString()}</strong
-                        >
-                        <div class="order-meta">
-                            {order.items.length} items · ${order.total.toFixed(
-                                2,
-                            )}
-                        </div>
-                    </div>
-                    <span>View →</span>
-                </div>
+                <button type="button" class="order-card" on:click={() => openOrder(order)}>
+                    <span class="order-card-left">
+                        <strong>{new Date(order.createdAt).toLocaleString()}</strong>
+                        <span class="order-meta">
+                            {order.items.length} items · ${order.total.toFixed(2)}
+                        </span>
+                    </span>
+                    <span aria-hidden="true">View →</span>
+                </button>
             {/each}
         </div>
     {/if}
 
     {#if showModal && selectedOrder}
-        <div class="modal-backdrop" on:click={closeModal}></div>
+        <button class="modal-backdrop" on:click={closeModal} type="button" aria-label="Close modal"></button>
         <div class="modal">
             <h2>Order Details</h2>
             <div class="modal-items">

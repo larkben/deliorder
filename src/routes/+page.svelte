@@ -32,7 +32,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(135deg, #f7d046, #f4a261);
+        background: linear-gradient(135deg, #d3b23b, #d37629);
         font-family: system-ui, sans-serif;
     }
 
@@ -84,16 +84,5 @@
 
     button:hover {
         background-color: #d65a3c;
-    }
-
-    .signup {
-        margin-top: 1rem;
-        font-size: 0.9rem;
-    }
-
-    .signup a {
-        color: #e76f51;
-        text-decoration: none;
-        font-weight: 600;
     }
 </style>

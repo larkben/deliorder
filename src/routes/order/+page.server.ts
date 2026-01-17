@@ -2,24 +2,24 @@ import { MongoClient } from "mongodb";
 import { MONGODB_URI } from "$env/static/private";
 import type { Actions } from "./$types";
 import { redirect, fail } from "@sveltejs/kit";
+import { db } from "$lib/server/db";
 
 const client = new MongoClient(MONGODB_URI);
 
-export const load = async () => {
-  await client.connect();
-  const db = client.db("food_order");
-
+export async function load() {
   const products = await db.collection("products").find({}).toArray();
 
   return {
     products: products.map((p) => ({
       id: p._id.toString(),
       name: p.name,
+      description: p.description || "",
       price: p.price,
-      description: p.description,
+      section: p.section,
+      subsection: p.subsection || null,
     })),
   };
-};
+}
 
 export const actions: Actions = {
   default: async ({ request }) => {

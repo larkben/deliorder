@@ -12,18 +12,22 @@ export const actions: Actions = {
     const name = data.get("name")?.toString();
     const description = data.get("description")?.toString();
     const price = Number(data.get("price"));
+    const section = data.get("section")?.toString();
+    const subsection = data.get("subsection")?.toString();
 
-    if (!name || !price) {
+    if (!name || !price || !section) {
       return fail(400, { error: "Missing required fields" });
     }
 
     await client.connect();
     const db = client.db("food_order");
 
-    await db.collection("products").insertOne({
+    await db.collection("menu_items").insertOne({
       name,
       description,
       price,
+      section,
+      subsection,
       createdAt: new Date(),
     });
 

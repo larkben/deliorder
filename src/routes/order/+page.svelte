@@ -9,6 +9,8 @@
         name: string;
         price: number;
         description: string;
+        section: string; // e.g., "sandwiches", "kids-meals", "salads", "drinks", "sides"
+        subsection?: string; // e.g., "breakfast", "paninis", "fountain-drinks"
     };
     type CartItem = Product & { note?: string; completed?: boolean };
 
@@ -16,6 +18,9 @@
     let noteInput: Record<string, string> = {};
     let showModal = false;
     let selectedProduct: Product | null = null;
+    let activeSection: string = "sandwiches";
+    let filteredProducts: Product[] = [];
+
 
     /* OPEN MODAL FOR ADDING NOTE */
     function openModal(product: Product) {
@@ -61,25 +66,121 @@
         goto("/orders");
     }
 
+    async function selectSection(section: string) {
+        activeSection = section;
+
+        const res = await fetch(`/api/products/${section}`);
+        if (res.ok) {
+            filteredProducts = await res.json();
+        }
+    }
+
+
     $: total = cart.reduce((sum, item) => sum + item.price, 0);
+
+    // Group filtered products by subsection
+    $: groupedProducts = filteredProducts.reduce(
+        (acc: Record<string, Product[]>, product: Product) => {
+            const key = product.subsection || "items";
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(product);
+            return acc;
+        },
+        {}
+    );
+
+    onMount(() => {
+        selectSection(activeSection);
+    });
 </script>
 
 <main class="mobile-layout">
     <h1>Menu</h1>
-    <nav>
-        <a href="/order/new"> Add Item </a>
-        <a href="/orders"> Orders </a>
+
+    <label>
+        Name
+        <input name="name"/>
+    </label>
+
+    <label>
+        Lunch:
+        <select name="section" required>
+            <option value="a">A</option>
+            <option value="b">B</option>
+        </select>
+    </label>
+
+    <nav class="menu-nav">
+        <button
+            type="button"
+            class:active={activeSection === "sandwiches"}
+            on:click={() => selectSection("sandwiches")}
+        >
+            Sandwiches
+        </button>
+        <button
+            type="button"
+            class:active={activeSection === "kids-meals"}
+            on:click={() => selectSection("kids-meals")}
+        >
+            Kid's Meals
+        </button>
+        <button
+            type="button"
+            class:active={activeSection === "salads"}
+            on:click={() => selectSection("salads")}
+        >
+            Salads
+        </button>
+        <button
+            type="button"
+            class:active={activeSection === "drinks"}
+            on:click={() => selectSection("drinks")}
+        >
+            Drinks
+        </button>
+        <button
+            type="button"
+            class:active={activeSection === "sides"}
+            on:click={() => selectSection("sides")}
+        >
+            Sides
+        </button>
     </nav>
 
-    {#each data.products as product}
-        <div class="product-card" on:click={() => openModal(product)}>
-            <div class="product-info">
-                <strong>{product.name}</strong>
-                <p>{product.description}</p>
-            </div>
-            <span class="price">${product.price.toFixed(2)}</span>
-        </div>
-    {/each}
+    <section class="menu-section">
+        {#if activeSection === "sandwiches"}
+            <h2>Sandwiches</h2>
+        {:else if activeSection === "kids-meals"}
+            <h2>Kid's Meals</h2>
+            <p>All kids' meals come with chips, milk or a small fountain drink, and a small cup of our flavored Dole Whip!</p>
+        {:else if activeSection === "salads"}
+            <h2>Salads</h2>
+            <p>Try one of our fresh and healthy salads! Our dressings include Ranch, French, Italian, Fat Free Ranch, & Fat Free Italian.</p>
+        {:else if activeSection === "drinks"}
+            <h2>Drinks</h2>
+            <p>Milk Options: 2% Milk or Almond Milk</p>
+        {:else if activeSection === "sides"}
+            <h2>Sides</h2>
+        {/if}
+
+        {#each Object.entries(groupedProducts) as [subsection, products]}
+            <h3>{subsection}</h3>
+            {#each products as product}
+                <button class="product-card" on:click={() => openModal(product)} type="button">
+                    <div class="product-info">
+                        <strong>{product.name}</strong>
+                        <p>{product.description}</p>
+                    </div>
+                    <span class="price">${product.price.toFixed(2)}</span>
+                </button>
+            {/each}
+        {/each}
+
+        {#if filteredProducts.length === 0}
+            <p class="empty">No items in this section yet.</p>
+        {/if}
+    </section>
 
     <section class="cart">
         <h2>Your Cart ({cart.length})</h2>
@@ -94,8 +195,7 @@
                     </div>
                     <div class="price">
                         ${item.price.toFixed(2)}
-                        <button on:click={() => removeFromCart(index)}>✕</button
-                        >
+                        <button on:click={() => removeFromCart(index)}>✕</button>
                     </div>
                 </div>
             {/each}
@@ -109,7 +209,7 @@
 
     <!-- Modal for notes -->
     {#if showModal && selectedProduct}
-        <div class="modal-backdrop" on:click={closeModal}></div>
+        <button class="modal-backdrop" on:click={closeModal} type="button" aria-label="Close modal"></button>
         <div class="modal">
             <h2>{selectedProduct.name}</h2>
             <p>{selectedProduct.description}</p>
@@ -125,9 +225,7 @@
 
 <style>
     /* General mobile layout */
-    .mobile-layout,
-    .orders-layout,
-    .add-item-layout {
+    .mobile-layout {
         padding: 1rem;
         font-family: "Georgia", serif;
         background: #f4e8d8;
@@ -137,15 +235,16 @@
     h1,
     h2 {
         color: #5d3a1a;
+        scroll-margin-top: 1rem;
     }
 
-    nav {
+    .top-nav {
         display: flex;
         justify-content: space-between;
         margin-bottom: 1rem;
     }
 
-    nav a {
+    .top-nav a {
         padding: 0.5rem 1rem;
         background: #d2691e;
         color: white;
@@ -155,15 +254,59 @@
         font-size: 1rem;
     }
 
-    nav a:hover {
+    .top-nav a:hover {
         background: #8b4513;
+    }
+
+    /* Menu section navigation */
+    .menu-nav {
+        display: flex;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding: 0.5rem 0;
+        margin-bottom: 1rem;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .menu-nav button {
+        flex-shrink: 0;
+        padding: 0.5rem 0.75rem;
+        background: #fff9f0;
+        color: #5d3a1a;
+        border-radius: 20px;
+        border: 2px solid #d2b48c;
+        font-size: 0.9rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+    }
+
+    .menu-nav button:hover {
+        background: #d2b48c;
+        color: white;
+    }
+
+    .menu-nav button.active {
+        background: #8b4513;
+        color: white;
+        border-color: #8b4513;
+    }
+
+    .menu-section {
+        margin-bottom: 1.5rem;
+    }
+
+    .menu-section h3 {
+        color: #6b4423;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        text-transform: capitalize;
     }
 
     /* Product cards */
     .product-card {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
+        flex-direction: column; /* stack content vertically */
         background: #fff9f0;
         padding: 1rem;
         margin-bottom: 0.75rem;
@@ -171,11 +314,19 @@
         border: 2px solid #d2b48c;
         box-shadow: 0 3px 8px rgba(139, 69, 19, 0.15);
         font-size: 1rem;
+        cursor: pointer;
+        transition: transform 0.1s;
+    }
+
+    .product-card:hover {
+        transform: translateY(-2px);
     }
 
     .product-card .price {
         font-weight: bold;
         color: #8b4513;
+        margin-top: 1px; /* space below description */
+        font-size: 1.1rem;
     }
 
     /* Cart section */
@@ -255,4 +406,45 @@
         border-radius: 6px;
         font-size: 1rem; /* fix iOS zoom */
     }
+
+    /* Container label styling */
+    label {
+        display: flex;
+        flex-direction: column;
+        font-weight: bold;
+        color: #5d3a1a;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+    }
+
+    /* Select styling */
+    label select {
+        margin-top: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        border: 2px solid #d2b48c;
+        border-radius: 8px;
+        font-size: 1rem;
+        background: #fff9f0;
+        color: #5d3a1a;
+        appearance: none; /* removes default arrow styling */
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    /* Focus state */
+    label select:focus {
+        border-color: #8b4513;
+        box-shadow: 0 0 0 2px rgba(139, 69, 19, 0.2);
+        outline: none;
+    }
+
+    /* Optional: custom arrow using pseudo-element */
+    label select {
+        background-image: url("data:image/svg+xml,%3Csvg fill='%238b4513' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 1rem;
+        padding-right: 2rem; /* space for arrow */
+    }
+
 </style>

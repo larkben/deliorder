@@ -21,6 +21,22 @@
             <input name="price" type="number" step="0.01" required />
         </label>
 
+        <label>
+            Section
+            <select name="section" required>
+                <option value="sandwiches">Sandwiches</option>
+                <option value="kids-meals">Kids Meals</option>
+                <option value="salads">Salads</option>
+                <option value="drinks">Drinks</option>
+                <option value="sides">Sides</option>
+            </select>
+        </label>
+
+        <label>
+            Subsection
+            <input name="subsection"/>
+        </label>
+
         <button>Add Item</button>
     </form>
 
