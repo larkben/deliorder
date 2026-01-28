@@ -57,6 +57,8 @@
 <main class="orders-page">
     <h1>Orders</h1>
 
+    <!-- Update ~ some sort of date range filter for orders and the total value of all orders within the range -->
+
     {#if orders.length === 0}
         <p class="empty">No orders yet</p>
     {:else}
@@ -71,7 +73,7 @@
                     >
                         <span class="order-card-left">
                             <strong>
-                                {new Date(order.createdAt).toLocaleString()}
+                                 {order.name}
                             </strong>
                             <span class="order-meta">
                                 {order.items.length} items · ${order.total.toFixed(2)}
@@ -106,6 +108,8 @@
         </div>
     {/if}
 
+    <!-- Modal --> 
+
     {#if showModal && selectedOrder}
         <button
             class="modal-backdrop"
@@ -121,9 +125,6 @@
                 {#each selectedOrder.items as item}
                     <div class="modal-item">
                         <strong>{item.name}</strong>
-                        {#if item.description}
-                            <p>{item.description}</p>
-                        {/if}
                         {#if item.note}
                             <p class="note">📝 {item.note}</p>
                         {/if}
@@ -143,6 +144,8 @@
         </div>
     {/if}
 </main>
+
+<!-- CSS --> 
 
 <style>
     /* Grid of orders */
@@ -166,7 +169,7 @@
         padding: 1rem;
         border-radius: 12px;
         background: #fff9f0;
-        border: 2px solid #d2b48c;
+        border: 2px solid #e79be7;
     }
 
     .order-status {
@@ -198,7 +201,7 @@
         background: #fff9f0;
         padding: 1.5rem;
         border-radius: 12px;
-        border: 3px solid #d2b48c;
+        border: 3px solid #e064d6;
         box-shadow: 0 6px 15px rgba(139, 69, 19, 0.15);
         display: flex;
         justify-content: space-between;
@@ -252,12 +255,12 @@
     }
 
     .order-card strong {
-        color: #5d3a1a;
+        color: #ab11d1;
     }
 
     .order-meta {
         font-size: 0.9rem;
-        color: #6b4423;
+        color: #7d0e81;
     }
 
     /* Modal backdrop */
@@ -280,7 +283,7 @@
         background: #fff9f0;
         padding: 2rem;
         border-radius: 12px;
-        border: 3px solid #d2b48c;
+        border: 3px solid #bf70c2;
         box-shadow: 0 10px 25px rgba(139, 69, 19, 0.25);
         z-index: 100;
         max-width: 600px;
@@ -295,7 +298,7 @@
     }
 
     .modal-item {
-        border-bottom: 1px solid #d2b48c;
+        border-bottom: 1px solid #d87be0;
         padding: 0.5rem 0;
         display: flex;
         justify-content: space-between;
@@ -305,7 +308,7 @@
     .modal-item .note {
         font-style: italic;
         font-size: 0.85rem;
-        color: #8b6914;
+        color: #c74ebd;
     }
 
     /* Modal total and actions */
@@ -313,7 +316,7 @@
         margin-top: 1rem;
         font-size: 1.2rem;
         font-weight: bold;
-        color: #5d3a1a;
+        color: #bb51c5;
     }
 
     .modal-actions {
@@ -335,14 +338,14 @@
     }
 
     .modal-actions button:hover {
-        background: #5d3a1a;
+        background: #bc59c9;
     }
 
     .empty {
         text-align: center;
         margin-top: 2rem;
         font-style: italic;
-        color: #a0826d;
+        color: #c05cd4;
     }
 
     .orders-page {
@@ -354,10 +357,10 @@
 
     .orders-page h1 {
         font-size: 2rem;
-        color: #5d3a1a;
+        color: #ad47c7;
         font-weight: bold;
         margin-bottom: 1.5rem;
-        border-bottom: 3px solid #8b4513;
+        border-bottom: 3px solid #a13ac0;
         padding-bottom: 0.75rem;
     }
 </style>

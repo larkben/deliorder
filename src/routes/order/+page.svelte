@@ -20,7 +20,7 @@
     let selectedProduct: Product | null = null;
     let activeSection: string = "sandwiches";
     let filteredProducts: Product[] = [];
-
+    let name = "";
 
     /* OPEN MODAL FOR ADDING NOTE */
     function openModal(product: Product) {
@@ -52,7 +52,10 @@
     async function submitOrder() {
         if (cart.length === 0) return;
 
+        if (name === "") return;
+
         const formData = new FormData();
+        formData.append("name", name);
         formData.append("items", JSON.stringify(cart));
 
         const res = await fetch("/order", { method: "POST", body: formData });
@@ -99,7 +102,7 @@
 
     <label>
         Name
-        <input name="name"/>
+        <input name="name" bind:value={name} />
     </label>
 
     <label>

@@ -25,6 +25,12 @@ export const actions: Actions = {
   default: async ({ request }) => {
     const data = await request.formData();
 
+    // get name
+    const name = data.get("name")?.toString();
+    if (!name) {
+      return fail(400, { error: "No name for order" });
+    }
+
     // Expect cart items as JSON string
     const itemsJson = data.get("items")?.toString();
     if (!itemsJson) {
@@ -49,6 +55,7 @@ export const actions: Actions = {
     const db = client.db("food_order");
 
     await db.collection("orders").insertOne({
+      name,
       items,
       total,
       status: "new",
