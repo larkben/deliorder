@@ -17,7 +17,7 @@ export const load: PageServerLoad = async () => {
 
   // Convert _id to string for frontend
   const cleanedOrders = orders.map((o) => ({
-    id: o._id.toString(),
+    _id: o._id.toString(),
     items: o.items,
     total: o.total,
     status: o.status,

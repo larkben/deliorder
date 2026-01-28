@@ -28,6 +28,30 @@
 
         goto("/order");
     }
+
+    async function updateStatus(orderId: string, status: "new" | "closed") {
+        if (!orderId) {
+            console.error("Missing order id", { orderId });
+            return;
+        }
+
+        console.log("updating order:", orderId); // <-- add this once
+
+        const res = await fetch(`/api/orders/${orderId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+        });
+
+        if (!res.ok) return;
+
+        // Optimistic UI update
+        orders = orders.map((o) => ({
+            ...o,
+            id: o._id.toString(),
+        }));
+
+    }
 </script>
 
 <main class="orders-page">
@@ -38,29 +62,71 @@
     {:else}
         <div class="orders-grid">
             {#each orders as order}
-                <button type="button" class="order-card" on:click={() => openOrder(order)}>
-                    <span class="order-card-left">
-                        <strong>{new Date(order.createdAt).toLocaleString()}</strong>
-                        <span class="order-meta">
-                            {order.items.length} items · ${order.total.toFixed(2)}
+                <div class="order-row">
+                    <!-- Order card -->
+                    <button
+                        type="button"
+                        class="order-card"
+                        on:click={() => openOrder(order)}
+                    >
+                        <span class="order-card-left">
+                            <strong>
+                                {new Date(order.createdAt).toLocaleString()}
+                            </strong>
+                            <span class="order-meta">
+                                {order.items.length} items · ${order.total.toFixed(2)}
+                            </span>
                         </span>
-                    </span>
-                    <span aria-hidden="true">View →</span>
-                </button>
+
+                        <span class="order-status">
+                            {order.status}
+                        </span>
+                    </button>
+
+                    <!-- Status toggle (separate button) -->
+                    <button
+                        type="button"
+                        class="status-toggle {order.status}"
+                        aria-label="Toggle order status"
+                        on:click={() =>
+                            updateStatus(
+                                order._id,
+                                order.status === "new" ? "closed" : "new"
+                            )
+                        }
+                    >
+                        {#if order.status === "new"}
+                            ✓
+                        {:else}
+                            ↺
+                        {/if}
+                    </button>
+                </div>
             {/each}
         </div>
     {/if}
 
     {#if showModal && selectedOrder}
-        <button class="modal-backdrop" on:click={closeModal} type="button" aria-label="Close modal"></button>
+        <button
+            class="modal-backdrop"
+            on:click={closeModal}
+            type="button"
+            aria-label="Close modal"
+        ></button>
+
         <div class="modal">
             <h2>Order Details</h2>
+
             <div class="modal-items">
                 {#each selectedOrder.items as item}
                     <div class="modal-item">
                         <strong>{item.name}</strong>
-                        <p>{item.description}</p>
-                        {#if item.note}<p class="note">📝 {item.note}</p>{/if}
+                        {#if item.description}
+                            <p>{item.description}</p>
+                        {/if}
+                        {#if item.note}
+                            <p class="note">📝 {item.note}</p>
+                        {/if}
                         <span>${item.price.toFixed(2)}</span>
                     </div>
                 {/each}
@@ -86,6 +152,47 @@
         gap: 1.5rem;
     }
 
+    .order-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .order-card {
+        flex: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-radius: 12px;
+        background: #fff9f0;
+        border: 2px solid #d2b48c;
+    }
+
+    .order-status {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        font-weight: bold;
+    }
+
+    .status-toggle {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        font-weight: bold;
+        font-size: 1rem;
+    }
+
+    .status-toggle.new {
+        background: #2e7d32;
+        color: white;
+    }
+
+    .status-toggle.closed {
+        background: #999;
+        color: white;
+    }
+
     /* Individual order card */
     .order-card {
         background: #fff9f0;
@@ -100,6 +207,43 @@
         transition:
             transform 0.2s ease,
             box-shadow 0.2s ease;
+    }
+
+    .order-card-right {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .status-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+
+    .status-badge.new {
+        background: #ffe6f3;
+        color: #9f30c0;
+    }
+
+    .status-badge.closed {
+        background: #e6f4ea;
+        color: #2e7d32;
+    }
+
+    .status-action {
+        background: #2e7d32;
+        color: white;
+        border-radius: 50%;
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .order-card:hover {

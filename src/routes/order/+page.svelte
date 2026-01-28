@@ -170,7 +170,6 @@
                 <button class="product-card" on:click={() => openModal(product)} type="button">
                     <div class="product-info">
                         <strong>{product.name}</strong>
-                        <p>{product.description}</p>
                     </div>
                     <span class="price">${product.price.toFixed(2)}</span>
                 </button>
@@ -212,12 +211,19 @@
         <button class="modal-backdrop" on:click={closeModal} type="button" aria-label="Close modal"></button>
         <div class="modal">
             <h2>{selectedProduct.name}</h2>
-            <p>{selectedProduct.description}</p>
+
+            {#if selectedProduct.description}
+                <p class="modal-description">
+                    {selectedProduct.description}
+                </p>
+            {/if}
+
             <input
                 type="text"
                 placeholder="Add a note (optional)"
                 bind:value={noteInput[selectedProduct.id]}
             />
+
             <button on:click={addToCart}>Add to Cart</button>
         </div>
     {/if}
@@ -228,13 +234,13 @@
     .mobile-layout {
         padding: 1rem;
         font-family: "Georgia", serif;
-        background: #f4e8d8;
+        background: #f1b0ec;
         min-height: 100vh;
     }
 
     h1,
     h2 {
-        color: #5d3a1a;
+        color: #5c064d;
         scroll-margin-top: 1rem;
     }
 
@@ -246,7 +252,7 @@
 
     .top-nav a {
         padding: 0.5rem 1rem;
-        background: #d2691e;
+        background: #c664da;
         color: white;
         text-decoration: none;
         border-radius: 6px;
@@ -255,7 +261,7 @@
     }
 
     .top-nav a:hover {
-        background: #8b4513;
+        background: #b31ec0;
     }
 
     /* Menu section navigation */
@@ -272,9 +278,9 @@
         flex-shrink: 0;
         padding: 0.5rem 0.75rem;
         background: #fff9f0;
-        color: #5d3a1a;
+        color: #bb4597;
         border-radius: 20px;
-        border: 2px solid #d2b48c;
+        border: 2px solid #ce98ce;
         font-size: 0.9rem;
         font-weight: bold;
         cursor: pointer;
@@ -282,14 +288,14 @@
     }
 
     .menu-nav button:hover {
-        background: #d2b48c;
+        background: #c482e2;
         color: white;
     }
 
     .menu-nav button.active {
-        background: #8b4513;
+        background: #9f30c0;
         color: white;
-        border-color: #8b4513;
+        border-color: #bd4acc;
     }
 
     .menu-section {
@@ -297,25 +303,44 @@
     }
 
     .menu-section h3 {
-        color: #6b4423;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
-        text-transform: capitalize;
+        font-size: 0.9rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        opacity: 0.7;
     }
 
     /* Product cards */
     .product-card {
         display: flex;
-        flex-direction: column; /* stack content vertically */
+        justify-content: space-between;
+        align-items: center;
+
         background: #fff9f0;
         padding: 1rem;
         margin-bottom: 0.75rem;
-        border-radius: 10px;
+
+        border-radius: 12px;
         border: 2px solid #d2b48c;
-        box-shadow: 0 3px 8px rgba(139, 69, 19, 0.15);
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+
+        min-height: 64px; /* forces uniformity */
         font-size: 1rem;
-        cursor: pointer;
-        transition: transform 0.1s;
+    }
+
+    .price {
+        margin-left: 0.3rem;
+    }
+
+    .product-info strong {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #5d3a1a;
+    }
+
+    .product-card .price {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #8b4513;
     }
 
     .product-card:hover {
@@ -328,6 +353,11 @@
         margin-top: 1px; /* space below description */
         font-size: 1.1rem;
     }
+
+    .product-card:active {
+        transform: scale(0.98);
+    }
+
 
     /* Cart section */
     .cart-item {
@@ -396,6 +426,13 @@
         border: 3px solid #d2b48c;
         z-index: 100;
         width: 90%;
+    }
+
+    .modal-description {
+        font-size: 0.95rem;
+        line-height: 1.4;
+        color: #6b4423;
+        margin: 0.5rem 0 1rem;
     }
 
     .modal input {

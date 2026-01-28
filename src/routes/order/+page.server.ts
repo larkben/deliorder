@@ -11,7 +11,7 @@ export async function load() {
 
   return {
     products: products.map((p) => ({
-      id: p._id.toString(),
+      id: p.id,
       name: p.name,
       description: p.description || "",
       price: p.price,
