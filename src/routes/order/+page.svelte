@@ -4,44 +4,187 @@
 
     export let data;
 
+    type CustomizationOption = {
+        value: string;
+        label: string;
+        price: number;
+    };
+
+    type Customization = {
+        id: string;
+        label: string;
+        type: "single" | "multiple";
+        required: boolean;
+        options: CustomizationOption[];
+    };
+
     type Product = {
         id: string;
         name: string;
         price: number;
         description: string;
-        section: string; // e.g., "sandwiches", "kids-meals", "salads", "drinks", "sides"
-        subsection?: string; // e.g., "breakfast", "paninis", "fountain-drinks"
+        section: string;
+        subsection?: string;
+        customizations?: Customization[];
     };
-    type CartItem = Product & { note?: string; completed?: boolean };
+
+    type CartItem = Product & {
+        note?: string;
+        completed?: boolean;
+        selections?: Record<string, string | string[]>;
+        finalPrice?: number;
+    };
 
     let cart: CartItem[] = [];
-    let noteInput: Record<string, string> = {};
+    let noteInput: string = "";
     let showModal = false;
     let selectedProduct: Product | null = null;
+    let selections: Record<string, string | string[]> = {};
     let activeSection: string = "sandwiches";
     let filteredProducts: Product[] = [];
     let name = "";
 
-    /* OPEN MODAL FOR ADDING NOTE */
+    /* OPEN MODAL FOR CUSTOMIZATION */
     function openModal(product: Product) {
         selectedProduct = product;
-        noteInput[product.id] = "";
+        noteInput = "";
+        selections = {};
+        
+        // Initialize selections for customizations
+        if (product.customizations) {
+            product.customizations.forEach((customization) => {
+                if (customization.type === "single") {
+                    selections[customization.id] = "";
+                } else {
+                    selections[customization.id] = [];
+                }
+            });
+        }
+        
         showModal = true;
     }
 
     function closeModal() {
         showModal = false;
         selectedProduct = null;
+        selections = {};
+        noteInput = "";
+    }
+
+    function toggleMultipleOption(customizationId: string, optionValue: string) {
+        const current = selections[customizationId] as string[];
+        if (current.includes(optionValue)) {
+            selections[customizationId] = current.filter((v) => v !== optionValue);
+        } else {
+            selections[customizationId] = [...current, optionValue];
+        }
+    }
+
+    function calculateFinalPrice(product: Product, selections: Record<string, string | string[]>): number {
+        let total = product.price;
+
+        if (product.customizations) {
+            product.customizations.forEach((customization) => {
+                const selection = selections[customization.id];
+
+                if (customization.type === "single" && typeof selection === "string") {
+                    const option = customization.options.find((o) => o.value === selection);
+                    if (option) {
+                        total += option.price;
+                    }
+                } else if (customization.type === "multiple" && Array.isArray(selection)) {
+                    selection.forEach((value) => {
+                        const option = customization.options.find((o) => o.value === value);
+                        if (option) {
+                            total += option.price;
+                        }
+                    });
+                }
+            });
+        }
+
+        return total;
+    }
+
+    function canAddToCart(): boolean {
+        console.log("=== canAddToCart called ===");
+        console.log("selectedProduct:", selectedProduct);
+        
+        if (!selectedProduct) {
+            console.log("No selected product");
+            return false;
+        }
+
+        console.log("Product customizations:", selectedProduct.customizations);
+        console.log("Current selections:", selections);
+
+        // If no customizations exist, can always add to cart
+        if (!selectedProduct.customizations || selectedProduct.customizations.length === 0) {
+            console.log("No customizations - returning true");
+            return true;
+        }
+
+        // Check if all required customizations are filled
+        for (const customization of selectedProduct.customizations) {
+            console.log(`Checking customization: ${customization.label}`);
+            console.log(`  ID: ${customization.id}`);
+            console.log(`  Type: ${customization.type}, Required: ${customization.required}`);
+            
+            if (customization.required) {
+                const selection = selections[customization.id];
+                console.log(`  Selection for ID "${customization.id}":`, selection);
+                console.log(`  Selection type:`, typeof selection);
+                console.log(`  Is array?:`, Array.isArray(selection));
+                
+                if (customization.type === "single") {
+                    if (!selection || selection === "") {
+                        console.log(`  ❌ FAILED: Single choice required but empty`);
+                        return false;
+                    }
+                    console.log(`  ✅ PASSED: Single choice has value "${selection}"`);
+                }
+                
+                if (customization.type === "multiple") {
+                    if (!Array.isArray(selection) || selection.length === 0) {
+                        console.log(`  ❌ FAILED: Multiple choice required but empty`);
+                        return false;
+                    }
+                    console.log(`  ✅ PASSED: Multiple choice has ${selection.length} values`);
+                }
+            } else {
+                console.log(`  ⏭️ SKIPPED: Not required`);
+            }
+        }
+
+        console.log("✅ All checks passed - returning true");
+        return true;
+    }
+
+    $: currentPrice = selectedProduct ? calculateFinalPrice(selectedProduct, selections) : 0;
+    
+    $: canAdd = selectedProduct && selections && canAddToCart();
+    
+    $: {
+        console.log("🔄 REACTIVE UPDATE:");
+        console.log("  selectedProduct:", selectedProduct?.name);
+        console.log("  selections:", selections);
+        console.log("  canAdd:", canAdd);
     }
 
     function addToCart() {
-        if (!selectedProduct) return;
+        if (!selectedProduct || !canAdd) return;
+        const finalPrice = calculateFinalPrice(selectedProduct, selections);
 
         cart = [
             ...cart,
-            { ...selectedProduct, note: noteInput[selectedProduct.id] },
+            {
+                ...selectedProduct,
+                note: noteInput,
+                selections: { ...selections },
+                finalPrice,
+            },
         ];
-        noteInput[selectedProduct.id] = "";
+
         closeModal();
     }
 
@@ -51,7 +194,6 @@
 
     async function submitOrder() {
         if (cart.length === 0) return;
-
         if (name === "") return;
 
         const formData = new FormData();
@@ -78,10 +220,37 @@
         }
     }
 
+    function getSelectionDisplay(item: CartItem): string[] {
+        if (!item.selections || !item.customizations) return [];
 
-    $: total = cart.reduce((sum, item) => sum + item.price, 0);
+        const displays: string[] = [];
 
-    // Group filtered products by subsection
+        item.customizations.forEach((customization) => {
+            const selection = item.selections![customization.id];
+
+            if (customization.type === "single" && typeof selection === "string" && selection) {
+                const option = customization.options.find((o) => o.value === selection);
+                if (option) {
+                    displays.push(`${customization.label}: ${option.label}`);
+                }
+            } else if (customization.type === "multiple" && Array.isArray(selection) && selection.length > 0) {
+                const labels = selection
+                    .map((value) => {
+                        const option = customization.options.find((o) => o.value === value);
+                        return option?.label;
+                    })
+                    .filter(Boolean);
+                if (labels.length > 0) {
+                    displays.push(`${customization.label}: ${labels.join(", ")}`);
+                }
+            }
+        });
+
+        return displays;
+    }
+
+    $: total = cart.reduce((sum, item) => sum + (item.finalPrice || item.price), 0);
+
     $: groupedProducts = filteredProducts.reduce(
         (acc: Record<string, Product[]>, product: Product) => {
             const key = product.subsection || "items";
@@ -154,6 +323,7 @@
     <section class="menu-section">
         {#if activeSection === "sandwiches"}
             <h2>Sandwiches</h2>
+            <p>Available on white sourdough bread or wheatberry bread, or on a regular tortilla, sun-dried tomato, or spinach wrap!</p>
         {:else if activeSection === "kids-meals"}
             <h2>Kid's Meals</h2>
             <p>All kids' meals come with chips, milk or a small fountain drink, and a small cup of our flavored Dole Whip!</p>
@@ -165,6 +335,7 @@
             <p>Milk Options: 2% Milk or Almond Milk</p>
         {:else if activeSection === "sides"}
             <h2>Sides</h2>
+            <p>Add on to your meal with one of our delicious sides!</p>
         {/if}
 
         {#each Object.entries(groupedProducts) as [subsection, products]}
@@ -174,7 +345,6 @@
                     <div class="product-info">
                         <strong>{product.name}</strong>
                     </div>
-                    <span class="price">${product.price.toFixed(2)}</span>
                 </button>
             {/each}
         {/each}
@@ -193,10 +363,13 @@
                 <div class="cart-item">
                     <div>
                         <strong>{item.name}</strong>
+                        {#each getSelectionDisplay(item) as display}
+                            <p class="selection">{display}</p>
+                        {/each}
                         {#if item.note}<p class="note">📝 {item.note}</p>{/if}
                     </div>
                     <div class="price">
-                        ${item.price.toFixed(2)}
+                        ${(item.finalPrice || item.price).toFixed(2)}
                         <button on:click={() => removeFromCart(index)}>✕</button>
                     </div>
                 </div>
@@ -209,282 +382,432 @@
         Submit Order
     </button>
 
-    <!-- Modal for notes -->
+    <!-- Customization Modal -->
     {#if showModal && selectedProduct}
-        <button class="modal-backdrop" on:click={closeModal} type="button" aria-label="Close modal"></button>
-        <div class="modal">
-            <h2>{selectedProduct.name}</h2>
+        <div class="modal-backdrop" on:click={closeModal} on:keydown={(e) => e.key === 'Escape' && closeModal()} role="button" tabindex="-1" aria-label="Close modal"></div>
+        <div class="modal-centered">
+            <div class="modal-content">
+                <button class="modal-close" on:click={closeModal} type="button">✕</button>
+                
+                <h2>{selectedProduct.name}</h2>
+                <p class="base-price">Base Price: ${selectedProduct.price.toFixed(2)}</p>
 
-            {#if selectedProduct.description}
-                <p class="modal-description">
-                    {selectedProduct.description}
-                </p>
-            {/if}
+                {#if selectedProduct.description}
+                    <p class="modal-description">{selectedProduct.description}</p>
+                {/if}
 
-            <input
-                type="text"
-                placeholder="Add a note (optional)"
-                bind:value={noteInput[selectedProduct.id]}
-            />
+                {#if selectedProduct.customizations && selectedProduct.customizations.length > 0}
+                    <div class="customizations">
+                        {#each selectedProduct.customizations as customization}
+                            <div class="customization-group">
+                                <h3>
+                                    {customization.label}
+                                    {#if customization.required}<span class="required">*</span>{/if}
+                                </h3>
 
-            <button on:click={addToCart}>Add to Cart</button>
+                                {#if customization.type === "single"}
+                                    <div class="options-grid">
+                                        {#each customization.options as option}
+                                            <button
+                                                type="button"
+                                                class="option-btn"
+                                                class:selected={selections[customization.id] === option.value}
+                                                on:click={() => (selections[customization.id] = option.value)}
+                                            >
+                                                <span class="option-label">{option.label}</span>
+                                                {#if option.price > 0}
+                                                    <span class="option-price">+${option.price.toFixed(2)}</span>
+                                                {/if}
+                                            </button>
+                                        {/each}
+                                    </div>
+                                {:else}
+                                    <div class="options-grid">
+                                        {#each customization.options as option}
+                                            <button
+                                                type="button"
+                                                class="option-btn"
+                                                class:selected={selections[customization.id] && (selections[customization.id] as string[]).includes(option.value)}
+                                                on:click={() => toggleMultipleOption(customization.id, option.value)}
+                                            >
+                                                <span class="option-label">{option.label}</span>
+                                                {#if option.price > 0}
+                                                    <span class="option-price">+${option.price.toFixed(2)}</span>
+                                                {/if}
+                                            </button>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+
+                <label class="note-label">
+                    Special Instructions (optional)
+                    <textarea
+                        placeholder="Add any special requests here..."
+                        bind:value={noteInput}
+                        rows="3"
+                    ></textarea>
+                </label>
+
+                <div class="modal-footer">
+                    <div class="current-price">
+                        Total: <strong>${currentPrice.toFixed(2)}</strong>
+                    </div>
+                    <button
+                        class="add-to-cart-btn"
+                        on:click={addToCart}
+                        disabled={!canAdd}
+                        type="button"
+                    >
+                        Add to Cart
+                    </button>
+                </div>
+            </div>
         </div>
     {/if}
 </main>
 
 <style>
-    /* General mobile layout */
-    .mobile-layout {
-        padding: 1rem;
-        font-family: "Georgia", serif;
-        background: #f1b0ec;
-        min-height: 100vh;
-    }
-
-    h1,
-    h2 {
-        color: #5c064d;
-        scroll-margin-top: 1rem;
-    }
-
-    .top-nav {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 1rem;
-    }
-
-    .top-nav a {
-        padding: 0.5rem 1rem;
-        background: #c664da;
-        color: white;
-        text-decoration: none;
-        border-radius: 6px;
-        font-weight: bold;
-        font-size: 1rem;
-    }
-
-    .top-nav a:hover {
-        background: #b31ec0;
-    }
-
-    /* Menu section navigation */
-    .menu-nav {
-        display: flex;
-        gap: 0.5rem;
-        overflow-x: auto;
-        padding: 0.5rem 0;
-        margin-bottom: 1rem;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .menu-nav button {
-        flex-shrink: 0;
-        padding: 0.5rem 0.75rem;
-        background: #fff9f0;
-        color: #bb4597;
-        border-radius: 20px;
-        border: 2px solid #ce98ce;
-        font-size: 0.9rem;
-        font-weight: bold;
-        cursor: pointer;
-        transition: background 0.2s, color 0.2s;
-    }
-
-    .menu-nav button:hover {
-        background: #c482e2;
-        color: white;
-    }
-
-    .menu-nav button.active {
-        background: #9f30c0;
-        color: white;
-        border-color: #bd4acc;
-    }
-
-    .menu-section {
-        margin-bottom: 1.5rem;
-    }
-
-    .menu-section h3 {
-        font-size: 0.9rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        opacity: 0.7;
-    }
-
-    /* Product cards */
-    .product-card {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-
-        background: #fff9f0;
-        padding: 1rem;
-        margin-bottom: 0.75rem;
-
-        border-radius: 12px;
-        border: 2px solid #d2b48c;
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
-
-        min-height: 64px; /* forces uniformity */
-        font-size: 1rem;
-    }
-
-    .price {
-        margin-left: 0.3rem;
-    }
-
-    .product-info strong {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #5d3a1a;
-    }
-
-    .product-card .price {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #8b4513;
-    }
-
-    .product-card:hover {
-        transform: translateY(-2px);
-    }
-
-    .product-card .price {
-        font-weight: bold;
-        color: #8b4513;
-        margin-top: 1px; /* space below description */
-        font-size: 1.1rem;
-    }
-
-    .product-card:active {
-        transform: scale(0.98);
-    }
-
-
-    /* Cart section */
-    .cart-item {
-        display: flex;
-        justify-content: space-between;
-        padding: 0.75rem;
-        background: #fff;
-        border-radius: 8px;
-        border: 2px solid #d2b48c;
-        margin-bottom: 0.5rem;
-    }
-
-    .cart-item .note {
-        font-size: 0.85rem;
-        font-style: italic;
-        color: #8b6914;
-    }
-
-    .total {
-        font-weight: bold;
-        margin-top: 1rem;
-        font-size: 1.2rem;
-        color: #5d3a1a;
-    }
-
-    /* Buttons */
-    button {
-        font-size: 1rem; /* >=16px for iOS */
-        font-weight: bold;
-        border-radius: 8px;
-        padding: 0.75rem;
-        border: none;
-        cursor: pointer;
-    }
-
-    .submit,
-    .modal button,
-    nav a {
-        background: #8b4513;
-        color: white;
-    }
-
-    .submit:disabled {
-        background: #a0826d;
-    }
-
-    /* Modal */
     .modal-backdrop {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.4);
-        z-index: 50;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
     }
 
-    .modal {
+    .modal-centered {
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: #fff9f0;
-        padding: 1.5rem;
-        border-radius: 12px;
-        border: 3px solid #d2b48c;
-        z-index: 100;
+        z-index: 1000;
         width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        position: relative;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .modal-close {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: #f0f0f0;
+        border: none;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        font-size: 1.2rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+    }
+
+    .modal-close:hover {
+        background: #e0e0e0;
+    }
+
+    .modal-content h2 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+    }
+
+    .base-price {
+        color: #666;
+        font-size: 0.95rem;
+        margin: 0 0 1rem 0;
     }
 
     .modal-description {
-        font-size: 0.95rem;
-        line-height: 1.4;
-        color: #6b4423;
-        margin: 0.5rem 0 1rem;
+        color: #555;
+        margin: 0 0 1.5rem 0;
+        line-height: 1.5;
     }
 
-    .modal input {
-        width: 100%;
-        padding: 0.5rem;
-        margin: 0.75rem 0;
-        border: 2px solid #d2b48c;
-        border-radius: 6px;
-        font-size: 1rem; /* fix iOS zoom */
+    .customizations {
+        margin: 1.5rem 0;
     }
 
-    /* Container label styling */
-    label {
+    .customization-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .customization-group h3 {
+        margin: 0 0 0.75rem 0;
+        font-size: 1rem;
+        color: #333;
+    }
+
+    .required {
+        color: #e76f51;
+        font-weight: bold;
+    }
+
+    .options-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .option-btn {
         display: flex;
         flex-direction: column;
-        font-weight: bold;
-        color: #5d3a1a;
-        margin-bottom: 1rem;
-        font-size: 1rem;
-    }
-
-    /* Select styling */
-    label select {
-        margin-top: 0.5rem;
-        padding: 0.5rem 0.75rem;
-        border: 2px solid #d2b48c;
+        align-items: center;
+        justify-content: center;
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
         border-radius: 8px;
-        font-size: 1rem;
-        background: #fff9f0;
-        color: #5d3a1a;
-        appearance: none; /* removes default arrow styling */
         cursor: pointer;
-        transition: border-color 0.2s, box-shadow 0.2s;
+        transition: all 0.2s;
+        min-height: 60px;
     }
 
-    /* Focus state */
-    label select:focus {
-        border-color: #8b4513;
-        box-shadow: 0 0 0 2px rgba(139, 69, 19, 0.2);
-        outline: none;
+    .option-btn:hover {
+        background: #e9ecef;
+        border-color: #ced4da;
     }
 
-    /* Optional: custom arrow using pseudo-element */
-    label select {
-        background-image: url("data:image/svg+xml,%3Csvg fill='%238b4513' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 0.75rem center;
-        background-size: 1rem;
-        padding-right: 2rem; /* space for arrow */
+    .option-btn.selected {
+        background: #e76f51;
+        border-color: #e76f51;
+        color: white;
     }
 
+    .option-label {
+        font-weight: 500;
+        text-align: center;
+        font-size: 0.9rem;
+    }
+
+    .option-price {
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+        opacity: 0.8;
+    }
+
+    .note-label {
+        display: block;
+        margin: 1.5rem 0;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .note-label textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        margin-top: 0.5rem;
+        font-family: inherit;
+        resize: vertical;
+    }
+
+    .modal-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #e0e0e0;
+    }
+
+    .current-price {
+        font-size: 1.1rem;
+        color: #333;
+    }
+
+    .current-price strong {
+        font-size: 1.3rem;
+        color: #e76f51;
+    }
+
+    .add-to-cart-btn {
+        padding: 0.75rem 2rem;
+        background: #2a9d8f;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: background 0.2s;
+    }
+
+    .add-to-cart-btn:hover:not(:disabled) {
+        background: #238276;
+    }
+
+    .add-to-cart-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+
+    .selection {
+        font-size: 0.85rem;
+        color: #666;
+        margin: 0.25rem 0;
+    }
+
+    /* Keep your existing styles for the rest of the page */
+    .mobile-layout {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 1rem;
+    }
+
+    h1 {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 1rem;
+    }
+
+    input, select {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.25rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .menu-nav {
+        display: flex;
+        gap: 0.5rem;
+        margin: 1.5rem 0;
+        overflow-x: auto;
+    }
+
+    .menu-nav button {
+        padding: 0.5rem 1rem;
+        background: #f0f0f0;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .menu-nav button.active {
+        background: #e76f51;
+        color: white;
+    }
+
+    .menu-section {
+        margin: 2rem 0;
+    }
+
+    .menu-section h2 {
+        margin-bottom: 0.5rem;
+    }
+
+    .menu-section h3 {
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+        color: #555;
+    }
+
+    .product-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .product-card:hover {
+        border-color: #e76f51;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .price {
+        font-weight: bold;
+        color: #e76f51;
+    }
+
+    .cart {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin: 2rem 0;
+    }
+
+    .cart-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 1rem;
+        background: white;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+    }
+
+    .cart-item button {
+        background: #e76f51;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+        margin-left: 0.5rem;
+    }
+
+    .note {
+        font-size: 0.85rem;
+        color: #666;
+        margin: 0.25rem 0;
+    }
+
+    .total {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 2px solid #e0e0e0;
+        font-size: 1.1rem;
+        text-align: right;
+    }
+
+    .submit {
+        width: 100%;
+        padding: 1rem;
+        background: #2a9d8f;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1.1rem;
+        cursor: pointer;
+    }
+
+    .submit:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+
+    .empty {
+        color: #999;
+        text-align: center;
+        padding: 2rem;
+    }
 </style>

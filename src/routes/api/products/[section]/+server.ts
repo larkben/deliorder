@@ -17,6 +17,7 @@ export async function GET({ params }) {
             price: p.price,
             section: p.section,
             subsection: p.subsection || null,
+            customizations: p.customizations || [],
         }))
     );
 }
