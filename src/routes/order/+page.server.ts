@@ -6,6 +6,8 @@ import { db } from "$lib/server/db";
 
 const client = new MongoClient(MONGODB_URI);
 
+import type { PageServerLoad } from "./$types";
+
 type CustomizationOption = {
   value: string;
   label: string;
@@ -34,21 +36,32 @@ type CartItem = {
   finalPrice?: number;
 };
 
-export async function load() {
-  const products = await db.collection("menu_items").find({}).toArray();
+export const load: PageServerLoad = async (event) => {
+    // Get the user session
+    const session = await event.locals.auth();
+    
+    // If not logged in, redirect to home
+    if (!session?.user) {
+        throw redirect(303, "/");
+    }
 
-  return {
-    products: products.map((p) => ({
-      id: p._id.toString(),
-      name: p.name,
-      description: p.description || "",
-      price: p.price,
-      section: p.section,
-      subsection: p.subsection || null,
-      customizations: p.customizations || [],
-    })),
-  };
-}
+    // Get menu items
+    const products = await db.collection("menu_items").find({}).toArray();
+
+    return {
+        session,
+        userName: session.user.name || session.user.email || "User",
+        products: products.map((p) => ({
+            id: p._id.toString(),
+            name: p.name,
+            description: p.description || "",
+            price: p.price,
+            section: p.section,
+            subsection: p.subsection || null,
+            customizations: p.customizations || [],
+        })),
+    };
+};
 
 export const actions: Actions = {
   default: async ({ request }) => {

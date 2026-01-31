@@ -30,12 +30,6 @@
         selectedOrder = null;
     }
 
-    function resumeOrder() {
-        if (!selectedOrder) return;
-        localStorage.setItem("active-order", JSON.stringify(selectedOrder.items));
-        goto("/order");
-    }
-
     async function updateStatus(orderId: string, status: "new" | "closed") {
         if (!orderId) {
             console.error("Missing order id", { orderId });
@@ -57,17 +51,11 @@
     }
 
     async function toggleItemCompleted(orderId: string, itemIndex: number) {
-        console.log("=== toggleItemCompleted ===");
-        console.log("Order ID:", orderId);
-        console.log("Item Index:", itemIndex);
-        
         const order = allOrders.find((o) => o._id === orderId);
         if (!order) {
             console.error("Order not found!");
             return;
         }
-
-        console.log("Current item state:", order.items[itemIndex]);
 
         // Create a new items array with the toggled item
         const updatedItems = order.items.map((item, idx) => {
@@ -80,35 +68,26 @@
             return item;
         });
 
-        console.log("Updated item state:", updatedItems[itemIndex]);
-
         // Optimistically update the UI immediately - CREATE NEW ARRAY
         allOrders = allOrders.map((o) =>
             o._id === orderId ? { ...o, items: updatedItems } : o
         );
 
-        console.log("allOrders updated");
-
         // Update selected order if modal is open
         if (selectedOrder && selectedOrder._id === orderId) {
             selectedOrder = { ...selectedOrder, items: updatedItems };
-            console.log("selectedOrder updated");
         }
 
         // Send to server
-        console.log("Sending to server...");
         const res = await fetch(`/api/orders/${orderId}/items`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ items: updatedItems }),
         });
 
-        console.log("Server response:", res.ok);
-
         // If server request fails, revert the optimistic update
         if (!res.ok) {
             console.error("Failed to update item completion");
-            // Revert by re-fetching or reversing the toggle
             const revertedItems = updatedItems.map((item, idx) => {
                 if (idx === itemIndex) {
                     return {
@@ -169,7 +148,6 @@
     }
 
     function applyFilters() {
-        console.log("=== Applying Filters ===");
         let result = [...allOrders];
 
         // Date filter
@@ -201,7 +179,6 @@
         }
 
         filteredOrders = result;
-        console.log("Filtered orders count:", filteredOrders.length);
     }
 
     function getOrderProgress(order: (typeof allOrders)[0]): number {
@@ -247,12 +224,7 @@
     })();
 
     // React to filter changes AND allOrders changes
-    $: {
-        console.log("Reactive statement triggered");
-        console.log("allOrders length:", allOrders.length);
-        dateFilter, statusFilter, searchQuery, customStartDate, customEndDate, allOrders;
-        applyFilters();
-    }
+    $: dateFilter, statusFilter, searchQuery, customStartDate, customEndDate, allOrders, applyFilters();
 
     onMount(() => {
         applyFilters();
@@ -390,7 +362,14 @@
         <div class="orders-list">
             {#each filteredOrders as order}
                 {@const progress = getOrderProgress(order)}
-                <div class="order-card" class:completed={order.status === "closed"}>
+                <div 
+                    class="order-card" 
+                    class:completed={order.status === "closed"}
+                    on:click={() => openOrder(order)}
+                    on:keydown={(e) => e.key === 'Enter' && openOrder(order)}
+                    role="button"
+                    tabindex="0"
+                >
                     <div class="order-header">
                         <div class="order-info">
                             <h3>{order.name}</h3>
@@ -406,16 +385,11 @@
                     </div>
 
                     <div class="order-items">
-                        {#each order.items as item, itemIndex}
+                        {#each order.items as item}
                             <div class="order-item">
-                                <button
-                                    class="item-checkbox"
-                                    class:checked={item.completed}
-                                    on:click={() => toggleItemCompleted(order._id, itemIndex)}
-                                    type="button"
-                                >
+                                <div class="item-checkbox-display" class:checked={item.completed}>
                                     {#if item.completed}✓{/if}
-                                </button>
+                                </div>
                                 <div class="item-details" class:completed={item.completed}>
                                     <strong>{item.name}</strong>
                                     {#if item.selections && Object.keys(item.selections).length > 0}
@@ -444,27 +418,6 @@
                         <div class="progress-bar">
                             <div class="progress-fill" style="width: {progress}%"></div>
                             <span class="progress-text">{progress}% Complete</span>
-                        </div>
-                        <div class="order-actions">
-                            <button
-                                class="btn-action"
-                                on:click={() => openOrder(order)}
-                                type="button"
-                            >
-                                View Details
-                            </button>
-                            <button
-                                class="btn-status"
-                                class:active={order.status === "new"}
-                                on:click={() =>
-                                    updateStatus(
-                                        order._id,
-                                        order.status === "new" ? "closed" : "new"
-                                    )}
-                                type="button"
-                            >
-                                {order.status === "new" ? "Mark Complete" : "Reopen"}
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -531,7 +484,6 @@
             </div>
 
             <div class="modal-actions">
-                <button on:click={resumeOrder} class="btn-secondary">Resume Order</button>
                 <button on:click={closeModal} class="btn-primary">Close</button>
             </div>
         </div>

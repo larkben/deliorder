@@ -1,12 +1,10 @@
-import adapter from "@sveltejs/adapter-node";
-import preprocess from "svelte-preprocess";
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
 
-export default {
-  preprocess: preprocess(),
-  kit: {
-    adapter: adapter({
-      out: "build",
-      precompress: true,
-    }),
-  },
-};
+export default defineConfig({
+	plugins: [sveltekit()],
+	server: {
+		host: 'localhost', // Force localhost instead of 127.0.0.1
+		port: 5173
+	}
+});

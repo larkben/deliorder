@@ -4,6 +4,10 @@
 
     export let data;
 
+    // Get user name from session
+    let name = data.userName;
+    let isNameFromSession = true; // Flag to make it read-only
+
     type CustomizationOption = {
         value: string;
         label: string;
@@ -42,7 +46,6 @@
     let selections: Record<string, string | string[]> = {};
     let activeSection: string = "sandwiches";
     let filteredProducts: Product[] = [];
-    let name = "";
 
     /* OPEN MODAL FOR CUSTOMIZATION */
     function openModal(product: Product) {
@@ -107,63 +110,39 @@
     }
 
     function canAddToCart(): boolean {
-        console.log("=== canAddToCart called ===");
-        console.log("selectedProduct:", selectedProduct);
-        
-        if (!selectedProduct) {
-            console.log("No selected product");
-            return false;
-        }
-
-        console.log("Product customizations:", selectedProduct.customizations);
-        console.log("Current selections:", selections);
+        if (!selectedProduct) return false;
 
         // If no customizations exist, can always add to cart
         if (!selectedProduct.customizations || selectedProduct.customizations.length === 0) {
-            console.log("No customizations - returning true");
             return true;
         }
 
         // Check if all required customizations are filled
         for (const customization of selectedProduct.customizations) {
-            console.log(`Checking customization: ${customization.label}`);
-            console.log(`  ID: ${customization.id}`);
-            console.log(`  Type: ${customization.type}, Required: ${customization.required}`);
-            
             if (customization.required) {
                 const selection = selections[customization.id];
-                console.log(`  Selection for ID "${customization.id}":`, selection);
-                console.log(`  Selection type:`, typeof selection);
-                console.log(`  Is array?:`, Array.isArray(selection));
                 
                 if (customization.type === "single") {
                     if (!selection || selection === "") {
-                        console.log(`  ❌ FAILED: Single choice required but empty`);
                         return false;
                     }
-                    console.log(`  ✅ PASSED: Single choice has value "${selection}"`);
                 }
                 
                 if (customization.type === "multiple") {
                     if (!Array.isArray(selection) || selection.length === 0) {
-                        console.log(`  ❌ FAILED: Multiple choice required but empty`);
                         return false;
                     }
-                    console.log(`  ✅ PASSED: Multiple choice has ${selection.length} values`);
                 }
-            } else {
-                console.log(`  ⏭️ SKIPPED: Not required`);
             }
         }
 
-        console.log("✅ All checks passed - returning true");
         return true;
     }
 
     $: currentPrice = selectedProduct ? calculateFinalPrice(selectedProduct, selections) : 0;
     
     $: canAdd = selectedProduct && selections && canAddToCart();
-    
+
     $: {
         console.log("🔄 REACTIVE UPDATE:");
         console.log("  selectedProduct:", selectedProduct?.name);
@@ -267,11 +246,19 @@
 </script>
 
 <main class="mobile-layout">
-    <h1>Menu</h1>
+
+    <div class="user-header">
+        <h1>Menu</h1>
+    </div>
 
     <label>
         Name
-        <input name="name" bind:value={name} />
+        <input 
+            name="name" 
+            bind:value={name} 
+            readonly={isNameFromSession}
+            class:readonly={isNameFromSession}
+        />
     </label>
 
     <label>
