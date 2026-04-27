@@ -1,16 +1,31 @@
 <script lang="ts">
-    import { signIn } from "@auth/sveltekit/client";
     import { goto } from "$app/navigation";
-
-    export let data;
+    import { session, googleSignIn, signOut } from "$lib/auth";
 
     let username = "";
     let password = "";
     let showAdminLogin = false;
     let showGoogleLogin = false;
+    let signingIn = false;
+    let signInError = "";
 
     async function handleGoogleLogin() {
-        await signIn("google", { callbackUrl: "/order" });
+        signingIn = true;
+        signInError = "";
+        try {
+            await googleSignIn();
+            // If sign-in succeeded the store is updated reactively;
+            // navigate after a brief tick so the store update propagates.
+            setTimeout(() => {
+                if ($session) goto("/order");
+            }, 200);
+        } catch (err) {
+            signInError = "Sign-in failed. Please try again.";
+            console.error(err);
+        } finally {
+            signingIn = false;
+            showGoogleLogin = false;
+        }
     }
 
     function handleAdminLogin() {
@@ -31,9 +46,6 @@
     function closeGoogleLogin() {
         showGoogleLogin = false;
     }
-
-    // If already logged in, show option to continue
-    $: isLoggedIn = !!data?.session?.user;
 </script>
 
 <!-- Admin login trigger -->
@@ -62,9 +74,13 @@
     <div class="google-login-modal">
         <button class="close-btn" on:click={closeGoogleLogin}>✕</button>
         <h2>Sign in to order</h2>
-        <p class="modal-description">Sign in with your school Google account to continue</p>
+        <p class="modal-description">Sign in with your Google account to continue</p>
 
-        <button class="google-signin-btn" on:click={handleGoogleLogin}>
+        {#if signInError}
+            <p class="error-msg">{signInError}</p>
+        {/if}
+
+        <button class="google-signin-btn" on:click={handleGoogleLogin} disabled={signingIn}>
             <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
                 <path
                     fill="#EA4335"
@@ -76,7 +92,7 @@
                 />
                 <path
                     fill="#FBBC05"
-                    d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                    d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
                 />
                 <path
                     fill="#34A853"
@@ -84,7 +100,7 @@
                 />
                 <path fill="none" d="M0 0h48v48H0z" />
             </svg>
-            Sign in with Google
+            {signingIn ? "Opening browser…" : "Sign in with Google"}
         </button>
     </div>
 {/if}
@@ -93,10 +109,11 @@
     <h1>🥪 Peanut Butter & Deli</h1>
     <p class="tagline">Fresh sandwiches made to order</p>
 
-    {#if isLoggedIn}
+    {#if $session}
         <div class="user-info">
-            <p>Welcome back, {data.session.user.name}!</p>
+            <p>Welcome back, {$session.user.name}!</p>
             <a href="/order" class="order-link"> Continue to Order </a>
+            <button class="signout-btn" on:click={signOut}>Sign out</button>
         </div>
     {:else}
         <button class="order-link" on:click={openGoogleLogin}>
@@ -155,6 +172,22 @@
     .order-link:hover {
         background: #d45a3e;
         transform: translateY(-2px);
+    }
+
+    .signout-btn {
+        display: block;
+        margin: 0.75rem auto 0;
+        padding: 0.5rem 1.25rem;
+        background: transparent;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .signout-btn:hover {
+        background: #f0f0f0;
     }
 
     .admin-button {
@@ -236,6 +269,12 @@
         font-size: 0.95rem;
     }
 
+    .error-msg {
+        color: #c0392b;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+    }
+
     .google-signin-btn {
         width: 100%;
         padding: 0.75rem 1.5rem;
@@ -252,10 +291,15 @@
         transition: all 0.2s;
     }
 
-    .google-signin-btn:hover {
+    .google-signin-btn:hover:not(:disabled) {
         background: #f8f9fa;
         border-color: #4285f4;
         box-shadow: 0 2px 8px rgba(66, 133, 244, 0.2);
+    }
+
+    .google-signin-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 
     .admin-popup h3 {
@@ -270,6 +314,7 @@
         border: 1px solid #ddd;
         border-radius: 6px;
         font-size: 1rem;
+        box-sizing: border-box;
     }
 
     .login-btn {
@@ -288,4 +333,3 @@
         background: #555;
     }
 </style>
-
