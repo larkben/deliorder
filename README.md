@@ -11,4 +11,3 @@ This template should help get you started developing with Tauri and SvelteKit in
 - [ ] replicate the svelte ui
 - [ ] get google sign in settings working
 - [ ] integrate the api calls to a rust web server (tbd)
-- [ ] 
