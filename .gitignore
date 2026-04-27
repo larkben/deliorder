@@ -24,3 +24,7 @@ vite.config.ts.timestamp-*
 
 # Remove MacFile Extras
 ._*
+
+# Rust build artifacts
+/api/target
+
