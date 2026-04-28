@@ -1,10 +1,29 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { goto } from "$app/navigation";
+    import { session } from "$lib/auth";
+    import { getOrders, patchOrderStatus, patchOrderItems } from "$lib/api";
 
-    export let data;
-    let allOrders = data.orders;
-    let filteredOrders = data.orders;
+    let allOrders: {
+        id: string;
+        _id: string;
+        name: string;
+        items: {
+            name: string;
+            basePrice: number;
+            finalPrice: number;
+            price: number;
+            selections: Record<string, unknown>;
+            note: string;
+            section: string;
+            subsection: string;
+            completed: boolean;
+        }[];
+        total: number;
+        status: "new" | "closed";
+        createdAt: string;
+    }[] = [];
+    let filteredOrders = allOrders;
 
     let showModal = false;
     let selectedOrder: (typeof allOrders)[0] | null = null;
@@ -36,13 +55,9 @@
             return;
         }
 
-        const res = await fetch(`/api/orders/${orderId}/status`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status }),
-        });
+        const res = await patchOrderStatus(orderId, status);
 
-        if (!res.ok) return;
+        if (!res) return;
 
         // Update local state - create new array
         allOrders = allOrders.map((o) =>
@@ -79,14 +94,9 @@
         }
 
         // Send to server
-        const res = await fetch(`/api/orders/${orderId}/items`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ items: updatedItems }),
-        });
-
-        // If server request fails, revert the optimistic update
-        if (!res.ok) {
+        try {
+            await patchOrderItems(orderId, updatedItems);
+        } catch {
             console.error("Failed to update item completion");
             const revertedItems = updatedItems.map((item, idx) => {
                 if (idx === itemIndex) {
@@ -226,7 +236,18 @@
     // React to filter changes AND allOrders changes
     $: dateFilter, statusFilter, searchQuery, customStartDate, customEndDate, allOrders, applyFilters();
 
-    onMount(() => {
+    onMount(async () => {
+        if (!$session) {
+            goto("/");
+            return;
+        }
+        try {
+            const fetched = await getOrders();
+            // Rust API returns { id } but UI uses { _id }; normalise here
+            allOrders = fetched.map((o: Record<string, unknown>) => ({ ...o, _id: o.id ?? o._id }));
+        } catch (err) {
+            console.error("Failed to load orders", err);
+        }
         applyFilters();
     });
 </script>

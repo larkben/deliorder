@@ -1,0 +1,23 @@
+[package]
+name = "deliorder-api"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone Rust API server for Deliorder (Axum + MongoDB)"
+
+[[bin]]
+name = "deliorder-api"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mongodb = "3.2.5"
+bson = { version = "2", features = ["chrono-0_4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"

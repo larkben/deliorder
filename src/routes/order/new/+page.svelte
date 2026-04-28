@@ -1,5 +1,6 @@
 <script lang="ts">
-    export let form;
+    import { goto } from "$app/navigation";
+    import { createProduct } from "$lib/api";
 
     type CustomizationOption = {
         value: string;
@@ -15,7 +16,14 @@
         options: CustomizationOption[];
     };
 
+    let name = "";
+    let description = "";
+    let price = 0;
+    let section = "sandwiches";
+    let subsection = "";
     let customizations: Customization[] = [];
+    let submitting = false;
+    let error = "";
 
     function addCustomization() {
         customizations = [
@@ -47,12 +55,15 @@
         ].options.filter((_, i) => i !== optionIndex);
     }
 
-    function handleSubmit(e: Event) {
-        const formElement = e.target as HTMLFormElement;
-        const customizationsInput = formElement.querySelector(
-            'input[name="customizations"]'
-        ) as HTMLInputElement;
-        
+    async function handleSubmit(e: Event) {
+        e.preventDefault();
+        error = "";
+
+        if (!name.trim() || !price || !section) {
+            error = "Name, price, and section are required.";
+            return;
+        }
+
         // Filter out empty customizations and options
         const cleanedCustomizations = customizations
             .filter((c) => c.label.trim() && c.options.length > 0)
@@ -64,32 +75,51 @@
             }))
             .filter((c) => c.options.length > 0);
 
-        customizationsInput.value = JSON.stringify(cleanedCustomizations);
+        submitting = true;
+        try {
+            await createProduct({
+                name: name.trim(),
+                description: description.trim() || undefined,
+                price,
+                section,
+                subsection: subsection.trim() || undefined,
+                customizations: cleanedCustomizations,
+            });
+            goto("/order");
+        } catch (err) {
+            error = err instanceof Error ? err.message : "Failed to add item.";
+        } finally {
+            submitting = false;
+        }
     }
 </script>
 
 <main class="container">
     <h1>Add Menu Item</h1>
 
-    <form method="POST" on:submit={handleSubmit}>
+    {#if error}
+        <p class="error-msg">{error}</p>
+    {/if}
+
+    <form on:submit={handleSubmit}>
         <label>
             Name
-            <input name="name" required />
+            <input bind:value={name} required />
         </label>
 
         <label>
             Description
-            <textarea name="description"></textarea>
+            <textarea bind:value={description}></textarea>
         </label>
 
         <label>
             Price ($)
-            <input name="price" type="number" step="0.01" required />
+            <input bind:value={price} type="number" step="0.01" min="0" required />
         </label>
 
         <label>
             Section
-            <select name="section" required>
+            <select bind:value={section} required>
                 <option value="sandwiches">Sandwiches</option>
                 <option value="kids-meals">Kids Meals</option>
                 <option value="salads">Salads</option>
@@ -100,7 +130,7 @@
 
         <label>
             Subsection
-            <input name="subsection" />
+            <input bind:value={subsection} />
         </label>
 
         <div class="customizations-section">
@@ -190,9 +220,9 @@
             {/each}
         </div>
 
-        <input type="hidden" name="customizations" value="" />
-
-        <button type="submit" class="submit-btn">Add Item</button>
+        <button type="submit" class="submit-btn" disabled={submitting}>
+            {submitting ? "Adding…" : "Add Item"}
+        </button>
     </form>
 
     <a href="/order" class="back">← Back to Menu</a>
@@ -203,6 +233,16 @@
         max-width: 720px;
         margin: 3rem auto;
         padding: 1.5rem;
+    }
+
+    .error-msg {
+        background: #fee;
+        border: 1px solid #fcc;
+        color: #c0392b;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.95rem;
     }
 
     form {
@@ -378,8 +418,13 @@
         margin-top: 1rem;
     }
 
-    .submit-btn:hover {
+    .submit-btn:hover:not(:disabled) {
         background: #d45a3e;
+    }
+
+    .submit-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 
     .back {

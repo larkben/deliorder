@@ -1,11 +1,11 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { goto } from "$app/navigation";
+    import { session } from "$lib/auth";
+    import { getProducts, createOrder } from "$lib/api";
 
-    export let data;
-
-    // Get user name from session
-    let name = data.userName;
+    // Get user name from session store
+    let name = $session?.user?.name ?? $session?.user?.email ?? "";
     let isNameFromSession = true; // Flag to make it read-only
 
     type CustomizationOption = {
@@ -175,27 +175,22 @@
         if (cart.length === 0) return;
         if (name === "") return;
 
-        const formData = new FormData();
-        formData.append("name", name);
-        formData.append("items", JSON.stringify(cart));
-
-        const res = await fetch("/order", { method: "POST", body: formData });
-
-        if (!res.ok) {
+        try {
+            await createOrder(name, cart);
+            cart = [];
+            goto("/orders");
+        } catch {
             alert("Failed to submit order");
-            return;
         }
-
-        cart = [];
-        goto("/orders");
     }
 
     async function selectSection(section: string) {
         activeSection = section;
 
-        const res = await fetch(`/api/products/${section}`);
-        if (res.ok) {
-            filteredProducts = await res.json();
+        try {
+            filteredProducts = await getProducts(section);
+        } catch (err) {
+            console.error("Failed to load products", err);
         }
     }
 
@@ -241,6 +236,10 @@
     );
 
     onMount(() => {
+        if (!$session) {
+            goto("/");
+            return;
+        }
         selectSection(activeSection);
     });
 </script>
