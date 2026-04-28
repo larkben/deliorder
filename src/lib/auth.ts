@@ -1,226 +1,103 @@
-/**
- * Client-side Google OAuth 2.0 authentication for Tauri.
- *
- * Uses tauri-plugin-oauth to spin up a local redirect server,
- * then opens the Google auth URL in the system browser via
- * @tauri-apps/plugin-shell. The resulting tokens are stored in
- * localStorage so the session survives page reloads.
- */
 import { writable, get } from "svelte/store";
-import { start, cancel } from "tauri-plugin-oauth";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-shell";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface GoogleUser {
+export interface User {
     email: string;
     name: string;
     picture: string;
 }
 
-export interface AuthSession {
-    user: GoogleUser;
+export interface Session {
+    user: User;
     accessToken: string;
-    /** Unix timestamp (seconds) when the access token expires */
-    expiresAt: number;
+    expiresAt: number; // unix seconds
 }
 
-// ---------------------------------------------------------------------------
-// Store
-// ---------------------------------------------------------------------------
+// ── Session store (persisted in localStorage) ─────────────────────────────────
 
-const SESSION_KEY = "deliorder_session";
+const KEY = "deliorder_session";
 
-function loadSession(): AuthSession | null {
+function load(): Session | null {
     try {
-        const raw = localStorage.getItem(SESSION_KEY);
+        const raw = localStorage.getItem(KEY);
         if (!raw) return null;
-        const session: AuthSession = JSON.parse(raw);
-        if (Date.now() / 1000 > session.expiresAt) {
-            localStorage.removeItem(SESSION_KEY);
-            return null;
-        }
-        return session;
-    } catch {
-        return null;
-    }
+        const s: Session = JSON.parse(raw);
+        if (Date.now() / 1000 > s.expiresAt) { localStorage.removeItem(KEY); return null; }
+        return s;
+    } catch { return null; }
 }
 
-function saveSession(session: AuthSession) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export const session = writable<Session | null>(load());
+
+// ── Google Sign-In ─────────────────────────────────────────────────────────────
+// Google requires PKCE for desktop apps (no client secret).
+// We start a tiny local HTTP server via a Tauri Rust command,
+// open Google's login page in the system browser, and wait for the redirect.
+
+const AUTH_URL  = "https://accounts.google.com/o/oauth2/v2/auth";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const INFO_URL  = "https://www.googleapis.com/oauth2/v3/userinfo";
+
+// Produce a random URL-safe base64 string
+function rand(bytes: number) {
+    const buf = new Uint8Array(bytes);
+    crypto.getRandomValues(buf);
+    return btoa(String.fromCharCode(...buf)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
-function clearSession() {
-    localStorage.removeItem(SESSION_KEY);
+// SHA-256 → base64url  (PKCE code_challenge)
+async function sha256b64(s: string) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
-export const session = writable<AuthSession | null>(loadSession());
+export async function signIn(): Promise<void> {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+    if (!clientId) throw new Error("VITE_GOOGLE_CLIENT_ID not set in .env");
 
-// ---------------------------------------------------------------------------
-// PKCE helpers
-// ---------------------------------------------------------------------------
+    const verifier  = rand(32);
+    const challenge = await sha256b64(verifier);
 
-function randomBase64url(bytes: number): string {
-    const array = new Uint8Array(bytes);
-    crypto.getRandomValues(array);
-    return btoa(String.fromCharCode(...array))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
-}
-
-async function sha256Base64url(plain: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(plain);
-    const digest = await crypto.subtle.digest("SHA-256", data);
-    return btoa(String.fromCharCode(...new Uint8Array(digest)))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=/g, "");
-}
-
-// ---------------------------------------------------------------------------
-// Google Sign-In  (Authorization Code + PKCE, loopback redirect)
-// ---------------------------------------------------------------------------
-
-const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
-
-/**
- * Returns the Google OAuth client ID from the VITE_ environment variable.
- * Set VITE_GOOGLE_CLIENT_ID in your .env file.
- */
-function getClientId(): string {
-    const id = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-    if (!id) {
-        throw new Error(
-            "VITE_GOOGLE_CLIENT_ID is not set. Add it to your .env file."
-        );
-    }
-    return id;
-}
-
-/**
- * Initiates the Google Sign-In flow for Tauri desktop.
- *
- * 1. Starts a local HTTP server on a random port (tauri-plugin-oauth).
- * 2. Opens the Google OAuth URL in the system browser.
- * 3. Waits for the redirect callback containing the auth code.
- * 4. Exchanges the code for tokens, fetches user info, and updates the store.
- */
-export async function googleSignIn(): Promise<void> {
-    const clientId = getClientId();
-    const codeVerifier = randomBase64url(32);
-    const codeChallenge = await sha256Base64url(codeVerifier);
-    const state = randomBase64url(16);
-
-    // Start the local redirect server; it returns the port it is listening on.
-    const port = await start((redirectUrl: string) => {
-        handleRedirect(redirectUrl, codeVerifier, clientId, port);
-    });
-
+    // Ask the Tauri Rust backend to start a local HTTP server and give us its port
+    const port = await invoke<number>("start_oauth_server");
     const redirectUri = `http://127.0.0.1:${port}`;
 
-    const params = new URLSearchParams({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: "openid email profile",
-        code_challenge: codeChallenge,
-        code_challenge_method: "S256",
-        state,
-        access_type: "online",
-    });
+    // Wait for the Rust backend to emit the auth code (fires when Google redirects back)
+    const unlisten = await listen<string>("oauth://code", async ({ payload: code }) => {
+        unlisten(); // unsubscribe — we only need this once
 
-    await open(`${GOOGLE_AUTH_URL}?${params.toString()}`);
-}
+        if (!code) return;
 
-async function handleRedirect(
-    redirectUrl: string,
-    codeVerifier: string,
-    clientId: string,
-    port: number
-): Promise<void> {
-    try {
-        const url = new URL(redirectUrl);
-        const code = url.searchParams.get("code");
-        if (!code) {
-            console.error("No code in OAuth redirect", redirectUrl);
-            return;
-        }
-
-        const redirectUri = `http://127.0.0.1:${port}`;
-
-        // Exchange code for tokens (public client – no client secret needed with PKCE)
-        const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+        // Exchange the code for an access token
+        const tokenRes = await fetch(TOKEN_URL, {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-                code,
-                client_id: clientId,
-                redirect_uri: redirectUri,
-                grant_type: "authorization_code",
-                code_verifier: codeVerifier,
-            }),
+            body: new URLSearchParams({ code, client_id: clientId, redirect_uri: redirectUri, grant_type: "authorization_code", code_verifier: verifier }),
         });
+        if (!tokenRes.ok) return;
+        const { access_token, expires_in = 3600 } = await tokenRes.json();
 
-        if (!tokenRes.ok) {
-            console.error("Token exchange failed", await tokenRes.text());
-            return;
-        }
+        // Fetch the user's name/email/picture from Google
+        const infoRes = await fetch(INFO_URL, { headers: { Authorization: `Bearer ${access_token}` } });
+        if (!infoRes.ok) return;
+        const { email = "", name = "", picture = "" } = await infoRes.json();
 
-        const tokenData = await tokenRes.json();
-        const accessToken: string = tokenData.access_token;
-        const expiresIn: number = tokenData.expires_in ?? 3600;
+        const s: Session = { user: { email, name, picture }, accessToken: access_token, expiresAt: Math.floor(Date.now() / 1000) + expires_in };
+        localStorage.setItem(KEY, JSON.stringify(s));
+        session.set(s);
+    });
 
-        // Fetch user profile
-        const userRes = await fetch(GOOGLE_USERINFO_URL, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-
-        if (!userRes.ok) {
-            console.error("Failed to fetch user info", await userRes.text());
-            return;
-        }
-
-        const profile = await userRes.json();
-
-        const newSession: AuthSession = {
-            user: {
-                email: profile.email ?? "",
-                name: profile.name ?? profile.email ?? "",
-                picture: profile.picture ?? "",
-            },
-            accessToken,
-            expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
-        };
-
-        saveSession(newSession);
-        session.set(newSession);
-    } catch (err) {
-        console.error("Error handling OAuth redirect", err);
-    } finally {
-        // Stop the local server once we are done
-        await cancel(port);
-    }
+    // Open Google's login page in the system browser
+    await open(`${AUTH_URL}?${new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: "openid email profile", code_challenge: challenge, code_challenge_method: "S256" })}`);
 }
 
-// ---------------------------------------------------------------------------
-// Sign out
-// ---------------------------------------------------------------------------
-
 export function signOut(): void {
-    clearSession();
+    localStorage.removeItem(KEY);
     session.set(null);
 }
 
-// ---------------------------------------------------------------------------
-// Auth guard helper
-// ---------------------------------------------------------------------------
-
-export function getSession(): AuthSession | null {
-    return get(session);
-}
+export function getSession(): Session | null { return get(session); }
