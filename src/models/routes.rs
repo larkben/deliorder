@@ -9,8 +9,6 @@ use crate::models::guards::*;
 use crate::ADMIN_USERNAME;
 use crate::ADMIN_PASSWORD;
 
-
-
 /// Public — no auth required.
 #[get("/health")]
 pub fn health() -> Json<ApiResponse<&'static str>> {
@@ -22,12 +20,12 @@ pub fn health() -> Json<ApiResponse<&'static str>> {
 pub fn login(body: Json<LoginRequest>) -> Result<Json<ApiResponse<LoginResponse>>, (Status, Json<ApiResponse<String>>)> {
     // In production: query DB, use bcrypt::verify(&body.password, &stored_hash)
     if body.username != ADMIN_USERNAME || body.password != ADMIN_PASSWORD {
-        return Err((Status::Unauthorized, ApiResponse::err("Invalid credentials")));
+        return Err((Status::Unauthorized, ApiResponse::<String>::err("Invalid credentials")));
     }
  
     match create_token(&body.username, "admin") {
         Ok(token) => Ok(ApiResponse::ok(LoginResponse { token })),
-        Err(_) => Err((Status::InternalServerError, ApiResponse::err("Token generation failed"))),
+        Err(_) => Err((Status::InternalServerError, ApiResponse::<String>::err("Token generation failed"))),
     }
 }
  

@@ -2,15 +2,16 @@
 
 use serde::{Deserialize, Serialize};
 
-use std::time::Duration;
+use chrono::{Utc, Duration};
+use jsonwebtoken::{encode, decode, Header, EncodingKey, DecodingKey, Validation};
 use crate::JWT_SECRET;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String,   // username
-    role: String,  // "admin" | "user" etc.
-    exp: i64,      // unix timestamp expiry
-    iat: i64,      // issued at
+pub struct Claims {
+    pub sub: String,   // username
+    pub role: String,  // "admin" | "user" etc.
+    pub exp: i64,      // unix timestamp expiry
+    pub iat: i64,      // issued at
 }
  
 pub fn create_token(username: &str, role: &str) -> Result<String, jsonwebtoken::errors::Error> {
