@@ -1,4 +1,5 @@
 use rocket::{launch, routes};
+use rocket_cors::{CorsOptions, AllowedOrigins};
 
 use crate::models::routes::{health, login, profile, list_users, reset_db};
 
@@ -17,7 +18,22 @@ const ADMIN_PASSWORD: &str = "secret123"; // bcrypt this in real use
  
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/api", routes![
+    let cors = CorsOptions {
+        allowed_origins: AllowedOrigins::all(), // tighten this later
+        allowed_methods: vec!["GET", "POST", "OPTIONS"]
+            .into_iter()
+            .map(|m| m.parse().unwrap())
+            .collect(),
+        allowed_headers: rocket_cors::AllowedHeaders::all(),
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors()
+    .unwrap();
+
+    rocket::build()
+    .attach(cors)
+    .mount("/api", routes![
         health,
         login,
         profile,
