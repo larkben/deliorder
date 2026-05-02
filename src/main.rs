@@ -1,7 +1,7 @@
 use rocket::{launch, routes};
-use rocket_cors::{CorsOptions, AllowedOrigins};
+use rocket_cors::{AllowedOrigins, CorsOptions};
 
-use crate::models::routes::{health, login, profile, list_users, reset_db};
+use crate::models::routes::{create_order, get_menu, health, list_users, login, profile, reset_db};
 
 pub mod models;
 
@@ -9,15 +9,17 @@ pub mod models;
 // ---------------
 
 const JWT_SECRET: &[u8] = b"change_this_to_an_env_var_in_production";
- 
+
 // Hardcoded admin for demo. In production: pull from DB, store hashed passwords.
 const ADMIN_USERNAME: &str = "admin";
 const ADMIN_PASSWORD: &str = "secret123"; // bcrypt this in real use
 
 // ─── Launch ────────────────────────────────────────────────────────────────
- 
-#[launch]
-fn rocket() -> _ {
+
+#[rocket::main]
+async fn main() -> Result<(), rocket::Error> {
+    // cors
+
     let cors = CorsOptions {
         allowed_origins: AllowedOrigins::all(), // tighten this later
         allowed_methods: vec!["GET", "POST", "OPTIONS"]
@@ -31,13 +33,30 @@ fn rocket() -> _ {
     .to_cors()
     .unwrap();
 
+    // mongo db
+
+    let client =
+        Client::with_uri_str(std::env::var("MONGODB_URI").expect("MongoDB Uri must be set."))
+            .await
+            .expect("Failed to connect to MongoDB.");
+
     rocket::build()
-    .attach(cors)
-    .mount("/api", routes![
-        health,
-        login,
-        profile,
-        list_users,
-        reset_db,
-    ])
+        .attach(cors)
+        .manage(DbState { client })
+        .mount(
+            "/api",
+            routes![
+                health,
+                login,
+                profile,
+                list_users,
+                reset_db,
+                get_menu,
+                create_order
+            ],
+        )
+        .launch()
+        .await?;
+
+    Ok(())
 }
