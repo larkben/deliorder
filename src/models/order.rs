@@ -46,7 +46,7 @@ pub struct CartItem {
 }
 
 // What gets stored in MongoDB
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ValidatedItem {
     pub name: String,
     pub base_price: f64,
@@ -55,15 +55,22 @@ pub struct ValidatedItem {
     pub note: String,
     pub section: String,
     pub subsection: Option<String>,
+    #[serde(default)]
+    pub completed: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Order {
+    #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
+    pub id: Option<bson::oid::ObjectId>,
     pub name: String,
     pub items: Vec<ValidatedItem>,
     pub total: f64,
     pub status: String,
+    #[serde(rename = "createdAt")]
     pub created_at: bson::DateTime,
+    #[serde(rename = "updatedAt", skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<bson::DateTime>,
 }
 
 // Menu item from DB
@@ -76,6 +83,8 @@ pub struct MenuItem {
     pub price: f64,
     pub section: String,
     pub subsection: Option<String>,
+    #[serde(rename = "createdAt", skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<bson::DateTime>,
     pub customizations: Option<Vec<Customization>>,
 }
 
@@ -87,6 +96,8 @@ pub struct MenuItemResponse {
     pub price: f64,
     pub section: String,
     pub subsection: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
     pub customizations: Vec<Customization>,
 }
 

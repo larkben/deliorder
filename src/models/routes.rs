@@ -1,7 +1,7 @@
 // routes.rs
 
 use crate::models::order::*;
-use mongodb::{Client, bson::doc};
+use mongodb::{Client, bson::doc, options::FindOptions};
 use rocket::{State, http::Status, serde::json::Json};
 use rocket::{get, post};
 
@@ -95,6 +95,18 @@ pub async fn get_menu(db: &State<DbState>) -> Result<Json<Vec<MenuItemResponse>>
             price: item.price,
             section: item.section,
             subsection: item.subsection,
+            created_at: item
+                .created_at
+                .map(|dt| dt.to_system_time()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| {
+                        let secs = d.as_secs();
+                        chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                            .unwrap_or_default()
+                            .to_rfc3339()
+                    })
+                    .unwrap_or_default())
+                .unwrap_or_default(),
             customizations: item.customizations.unwrap_or_default(),
         });
     }
@@ -109,12 +121,68 @@ pub async fn create_order(
 ) -> Result<Json<OrderResponse>, (Status, Json<OrderResponse>)> {
     let req = payload.into_inner();
 
-    if req.name.is_empty() {
+    let trimmed_name = req.name.trim();
+
+    // Validate name is not empty or whitespace
+    if trimmed_name.is_empty() {
         return Err((
             Status::BadRequest,
             Json(OrderResponse {
                 success: false,
-                message: "No name for order".into(),
+                message: "Name is required and cannot be empty".into(),
+            }),
+        ));
+    }
+
+    // Validate name length (minimum 2 characters, maximum 100)
+    if trimmed_name.len() < 2 {
+        return Err((
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Name must be at least 2 characters long".into(),
+            }),
+        ));
+    }
+
+    if trimmed_name.len() > 100 {
+        return Err((
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Name cannot exceed 100 characters".into(),
+            }),
+        ));
+    }
+
+    // Check if user already has an active order (confirmed or prepared)
+    let existing_order = db
+        .client
+        .database("food_order")
+        .collection::<Order>("orders")
+        .find_one(doc! {
+            "name": trimmed_name,
+            "status": {
+                "$in": ["confirmed", "prepared"]
+            }
+        })
+        .await
+        .map_err(|_| {
+            (
+                Status::InternalServerError,
+                Json(OrderResponse {
+                    success: false,
+                    message: "Database error".into(),
+                }),
+            )
+        })?;
+
+    if existing_order.is_some() {
+        return Err((
+            Status::Conflict,
+            Json(OrderResponse {
+                success: false,
+                message: "You already have an active order. Please wait for it to be completed before placing a new order.".into(),
             }),
         ));
     }
@@ -177,6 +245,7 @@ pub async fn create_order(
                 note: item.note.clone().unwrap_or_default(),
                 section: item.section.clone(),
                 subsection: item.subsection.clone(),
+                completed: None,
             }
         })
         .collect();
@@ -184,11 +253,13 @@ pub async fn create_order(
     let total: f64 = validated_items.iter().map(|i| i.final_price).sum();
 
     let order = Order {
-        name: req.name,
+        id: None,
+        name: trimmed_name.to_string(),
         items: validated_items,
         total,
         status: "new".into(),
         created_at: bson::DateTime::now(),
+        updated_at: Some(bson::DateTime::now()),
     };
 
     // Serialize to BSON and insert
@@ -225,19 +296,60 @@ pub async fn create_order(
 
 // order query
 
-#[rocket::get("/orders")]
-pub async fn get_orders(db: &State<DbState>) -> Result<Json<Vec<OrderResponse>>, Status> {
+#[rocket::get("/orders?<date_from>&<date_to>")]
+pub async fn get_orders(
+    _admin: AdminUser,
+    db: &State<DbState>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Result<Json<Vec<OrderQueryResponse>>, Status> {
     let collection = db
         .client
         .database("food_order")
         .collection::<Order>("orders");
 
+    // Build filter: only show confirmed and prepared orders
+    let mut filter = doc! {
+        "status": {
+            "$in": ["confirmed", "prepared"]
+        }
+    };
+
+    // Add date range filtering if provided
+    if date_from.is_some() || date_to.is_some() {
+        let mut date_filter = doc! {};
+
+        if let Some(from_str) = date_from {
+            if let Ok(from_dt) = chrono::DateTime::parse_from_rfc3339(&from_str) {
+                let timestamp = from_dt.timestamp();
+                date_filter.insert(
+                    "$gte",
+                    bson::DateTime::from_millis(timestamp * 1000),
+                );
+            }
+        }
+
+        if let Some(to_str) = date_to {
+            if let Ok(to_dt) = chrono::DateTime::parse_from_rfc3339(&to_str) {
+                let timestamp = to_dt.timestamp();
+                date_filter.insert(
+                    "$lte",
+                    bson::DateTime::from_millis(timestamp * 1000),
+                );
+            }
+        }
+
+        if !date_filter.is_empty() {
+            filter.insert("createdAt", date_filter);
+        }
+    }
+
     let options = FindOptions::builder()
-        .sort(doc! { "created_at": -1 })
+        .sort(doc! { "createdAt": -1 })
         .build();
 
     let mut cursor = collection
-        .find(doc! {})
+        .find(filter)
         .with_options(options)
         .await
         .map_err(|_| Status::InternalServerError)?;
@@ -264,7 +376,7 @@ pub async fn get_orders(db: &State<DbState>) -> Result<Json<Vec<OrderResponse>>,
                     final_price: item.final_price,
                     selections: item.selections,
                     note: item.note,
-                    section: item.section,
+                    section: Some(item.section),
                     subsection: item.subsection,
                     completed: item.completed.unwrap_or(false),
                 })
@@ -287,4 +399,182 @@ pub async fn get_orders(db: &State<DbState>) -> Result<Json<Vec<OrderResponse>>,
     }
 
     Ok(Json(orders))
+}
+
+// ── POST /orders/{id}/confirm (Admin only) ────────────────────────────────────
+
+#[rocket::post("/orders/<order_id>/confirm")]
+pub async fn confirm_order(
+    order_id: String,
+    _admin: AdminUser,
+    db: &State<DbState>,
+) -> Result<Json<OrderResponse>, (Status, Json<OrderResponse>)> {
+    let order_oid = bson::oid::ObjectId::parse_str(&order_id)
+        .map_err(|_| {
+            (
+                Status::BadRequest,
+                Json(OrderResponse {
+                    success: false,
+                    message: "Invalid order ID".into(),
+                }),
+            )
+        })?;
+
+    let filter = doc! { "_id": order_oid };
+    let update = doc! {
+        "$set": {
+            "status": "confirmed",
+            "updatedAt": bson::DateTime::now(),
+        }
+    };
+
+    db.client
+        .database("food_order")
+        .collection::<Order>("orders")
+        .update_one(filter, update)
+        .await
+        .map_err(|_| {
+            (
+                Status::InternalServerError,
+                Json(OrderResponse {
+                    success: false,
+                    message: "Failed to update order".into(),
+                }),
+            )
+        })?;
+
+    Ok(Json(OrderResponse {
+        success: true,
+        message: "Order confirmed".into(),
+    }))
+}
+
+// ── POST /orders/{id}/complete (Admin only) ────────────────────────────────────
+
+#[rocket::post("/orders/<order_id>/complete")]
+pub async fn complete_order(
+    order_id: String,
+    _admin: AdminUser,
+    db: &State<DbState>,
+) -> Result<Json<OrderResponse>, (Status, Json<OrderResponse>)> {
+    let order_oid = bson::oid::ObjectId::parse_str(&order_id)
+        .map_err(|_| {
+            (
+                Status::BadRequest,
+                Json(OrderResponse {
+                    success: false,
+                    message: "Invalid order ID".into(),
+                }),
+            )
+        })?;
+
+    let filter = doc! { "_id": order_oid };
+    let update = doc! {
+        "$set": {
+            "status": "prepared",
+            "updatedAt": bson::DateTime::now(),
+        }
+    };
+
+    db.client
+        .database("food_order")
+        .collection::<Order>("orders")
+        .update_one(filter, update)
+        .await
+        .map_err(|_| {
+            (
+                Status::InternalServerError,
+                Json(OrderResponse {
+                    success: false,
+                    message: "Failed to update order".into(),
+                }),
+            )
+        })?;
+
+    Ok(Json(OrderResponse {
+        success: true,
+        message: "Order marked as prepared".into(),
+    }))
+}
+
+// ── POST /menu/items (Admin only) ────────────────────────────────────
+
+#[rocket::post("/menu/items", format = "json", data = "<payload>")]
+pub async fn add_menu_item(
+    _admin: AdminUser,
+    db: &State<DbState>,
+    payload: Json<CreateMenuItemRequest>,
+) -> Result<Json<OrderResponse>, (Status, Json<OrderResponse>)> {
+    let req = payload.into_inner();
+
+    if req.name.is_empty() {
+        return Err((
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Menu item name is required".into(),
+            }),
+        ));
+    }
+
+    if req.price < 0.0 {
+        return Err((
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Price cannot be negative".into(),
+            }),
+        ));
+    }
+
+    if req.section.is_empty() {
+        return Err((
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Section is required".into(),
+            }),
+        ));
+    }
+
+    let menu_item = MenuItem {
+        id: None,
+        name: req.name,
+        description: req.description,
+        price: req.price,
+        section: req.section,
+        subsection: req.subsection,
+        created_at: Some(bson::DateTime::now()),
+        customizations: req.customizations,
+    };
+
+    let doc = bson::to_document(&menu_item).map_err(|_| {
+        (
+            Status::InternalServerError,
+            Json(OrderResponse {
+                success: false,
+                message: "Serialization error".into(),
+            }),
+        )
+    })?;
+
+    db.client
+        .database("food_order")
+        .collection("menu_items")
+        .insert_one(doc)
+        .await
+        .map_err(|_| {
+            (
+                Status::InternalServerError,
+                Json(OrderResponse {
+                    success: false,
+                    message: "Failed to insert menu item".into(),
+                }),
+            )
+        })?;
+
+    Ok(Json(OrderResponse {
+        success: true,
+        message: "Menu item created successfully".into(),
+    }))
 }

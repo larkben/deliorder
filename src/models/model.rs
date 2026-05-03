@@ -2,6 +2,7 @@
 
 use crate::models::order::*;
 use rocket::serde::json::Json;
+use rocket::form::FromForm;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
@@ -51,4 +52,25 @@ pub struct CreateOrderRequest {
 pub struct OrderResponse {
     pub success: bool,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StatusUpdateRequest {
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateMenuItemRequest {
+    pub name: String,
+    pub description: Option<String>,
+    pub price: f64,
+    pub section: String,
+    pub subsection: Option<String>,
+    pub customizations: Option<Vec<Customization>>,
+}
+
+#[derive(Debug, FromForm)]
+pub struct OrderQueryFilter {
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
 }
