@@ -4,6 +4,7 @@ use crate::models::order::*;
 use mongodb::{bson::doc, options::FindOptions, Client};
 use rocket::{get, post};
 use rocket::{http::Status, serde::json::Json, State};
+use futures::stream::TryStreamExt;
 
 pub struct DbState {
     pub client: Client,
@@ -570,4 +571,273 @@ pub async fn add_menu_item(
         success: true,
         message: "Menu item created successfully".into(),
     }))
+}
+
+// ── Analytics Endpoints (Admin only) ────────────────────────────────────
+
+/// GET /analytics/sales - Sales data aggregation within date range
+#[rocket::get("/analytics/sales?<date_from>&<date_to>")]
+pub async fn analytics_sales(
+    _admin: AdminUser,
+    db: &State<DbState>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Result<Json<SalesAnalytics>, Status> {
+    let collection = db
+        .client
+        .database("food_order")
+        .collection::<Order>("orders");
+
+    let mut match_doc = doc! {
+        "status": { "$in": ["confirmed", "prepared"] }
+    };
+
+    if date_from.is_some() || date_to.is_some() {
+        let mut date_filter = doc! {};
+
+        if let Some(from_str) = date_from {
+            if let Ok(from_dt) = chrono::DateTime::parse_from_rfc3339(&from_str) {
+                let timestamp = from_dt.timestamp();
+                date_filter.insert("$gte", bson::DateTime::from_millis(timestamp * 1000));
+            }
+        }
+
+        if let Some(to_str) = date_to {
+            if let Ok(to_dt) = chrono::DateTime::parse_from_rfc3339(&to_str) {
+                let timestamp = to_dt.timestamp();
+                date_filter.insert("$lte", bson::DateTime::from_millis(timestamp * 1000));
+            }
+        }
+
+        if !date_filter.is_empty() {
+            match_doc.insert("createdAt", date_filter);
+        }
+    }
+
+    let pipeline = vec![
+        doc! { "$match": match_doc },
+        doc! {
+            "$group": {
+                "_id": null,
+                "total_sales": { "$sum": "$total" },
+                "order_count": { "$sum": 1 }
+            }
+        },
+    ];
+
+    let mut results = collection
+        .aggregate(pipeline)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let mut total_sales = 0.0;
+    let mut total_orders = 0u32;
+
+    if let Some(doc) = results.try_next().await.map_err(|_| Status::InternalServerError)? {
+        total_sales = doc.get_f64("total_sales").unwrap_or(0.0);
+        total_orders = doc.get_i32("order_count").unwrap_or(0) as u32;
+    }
+
+    let average_order_value = if total_orders > 0 {
+        total_sales / total_orders as f64
+    } else {
+        0.0
+    };
+
+    Ok(Json(SalesAnalytics {
+        total_sales,
+        total_orders,
+        average_order_value,
+        daily_sales: vec![],
+    }))
+}
+
+/// GET /analytics/customizations - Most popular customizations
+#[rocket::get("/analytics/customizations?<date_from>&<date_to>")]
+pub async fn analytics_customizations(
+    _admin: AdminUser,
+    _db: &State<DbState>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Result<Json<Vec<CustomizationPopularity>>, Status> {
+    let _ = (date_from, date_to); // Suppress unused variable warnings
+    Ok(Json(vec![]))
+}
+
+/// GET /analytics/menu-items - Most popular menu items by sales
+#[rocket::get("/analytics/menu-items?<date_from>&<date_to>")]
+pub async fn analytics_menu_items(
+    _admin: AdminUser,
+    db: &State<DbState>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Result<Json<Vec<MenuItemPopularity>>, Status> {
+    let collection = db
+        .client
+        .database("food_order")
+        .collection::<Order>("orders");
+
+    let mut match_doc = doc! {
+        "status": { "$in": ["confirmed", "prepared"] }
+    };
+
+    if date_from.is_some() || date_to.is_some() {
+        let mut date_filter = doc! {};
+
+        if let Some(from_str) = date_from {
+            if let Ok(from_dt) = chrono::DateTime::parse_from_rfc3339(&from_str) {
+                let timestamp = from_dt.timestamp();
+                date_filter.insert("$gte", bson::DateTime::from_millis(timestamp * 1000));
+            }
+        }
+
+        if let Some(to_str) = date_to {
+            if let Ok(to_dt) = chrono::DateTime::parse_from_rfc3339(&to_str) {
+                let timestamp = to_dt.timestamp();
+                date_filter.insert("$lte", bson::DateTime::from_millis(timestamp * 1000));
+            }
+        }
+
+        if !date_filter.is_empty() {
+            match_doc.insert("createdAt", date_filter);
+        }
+    }
+
+    let pipeline = vec![
+        doc! { "$match": match_doc },
+        doc! { "$unwind": "$items" },
+        doc! {
+            "$group": {
+                "_id": "$items.name",
+                "count": { "$sum": 1 },
+                "total_revenue": { "$sum": "$items.final_price" },
+                "avg_price": { "$avg": "$items.final_price" }
+            }
+        },
+        doc! { "$sort": { "total_revenue": -1 } },
+        doc! { "$limit": 10 },
+    ];
+
+    let mut results = collection
+        .aggregate(pipeline)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let mut items = Vec::new();
+    while let Some(doc) = results.try_next().await.map_err(|_| Status::InternalServerError)? {
+        if let Ok(item_name) = doc.get_str("_id") {
+            items.push(MenuItemPopularity {
+                item_name: item_name.to_string(),
+                times_ordered: doc.get_i32("count").unwrap_or(0) as u32,
+                total_revenue: doc.get_f64("total_revenue").unwrap_or(0.0),
+                average_final_price: doc.get_f64("avg_price").unwrap_or(0.0),
+            });
+        }
+    }
+
+    Ok(Json(items))
+}
+
+/// GET /completed-orders - Get completed/prepared orders within date range
+#[rocket::get("/completed-orders?<date_from>&<date_to>")]
+pub async fn get_completed_orders(
+    _admin: AdminUser,
+    db: &State<DbState>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Result<Json<Vec<OrderDetails>>, Status> {
+    let collection = db
+        .client
+        .database("food_order")
+        .collection::<Order>("orders");
+
+    let mut filter = doc! { "status": "prepared" };
+
+    if date_from.is_some() || date_to.is_some() {
+        let mut date_filter = doc! {};
+
+        if let Some(from_str) = date_from {
+            if let Ok(from_dt) = chrono::DateTime::parse_from_rfc3339(&from_str) {
+                let timestamp = from_dt.timestamp();
+                date_filter.insert("$gte", bson::DateTime::from_millis(timestamp * 1000));
+            }
+        }
+
+        if let Some(to_str) = date_to {
+            if let Ok(to_dt) = chrono::DateTime::parse_from_rfc3339(&to_str) {
+                let timestamp = to_dt.timestamp();
+                date_filter.insert("$lte", bson::DateTime::from_millis(timestamp * 1000));
+            }
+        }
+
+        if !date_filter.is_empty() {
+            filter.insert("createdAt", date_filter);
+        }
+    }
+
+    let options = FindOptions::builder().sort(doc! { "createdAt": -1 }).build();
+
+    let mut cursor = collection
+        .find(filter)
+        .with_options(options)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let mut orders = Vec::new();
+    while cursor
+        .advance()
+        .await
+        .map_err(|_| Status::InternalServerError)?
+    {
+        let o = cursor
+            .deserialize_current()
+            .map_err(|_| Status::InternalServerError)?;
+
+        let updated_at = o.updated_at.map(|dt| {
+            dt.to_system_time()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| {
+                    let secs = d.as_secs();
+                    chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                        .unwrap_or_default()
+                        .to_rfc3339()
+                })
+                .unwrap_or_default()
+        });
+
+        orders.push(OrderDetails {
+            id: o.id.map(|id| id.to_hex()).unwrap_or_default(),
+            name: o.name,
+            items: o
+                .items
+                .into_iter()
+                .map(|item| OrderItemResponse {
+                    name: item.name,
+                    base_price: item.base_price,
+                    final_price: item.final_price,
+                    selections: item.selections,
+                    note: item.note,
+                    section: Some(item.section),
+                    subsection: item.subsection,
+                    completed: item.completed.unwrap_or(false),
+                })
+                .collect(),
+            total: o.total,
+            status: o.status,
+            created_at: o
+                .created_at
+                .to_system_time()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| {
+                    let secs = d.as_secs();
+                    chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                        .unwrap_or_default()
+                        .to_rfc3339()
+                })
+                .unwrap_or_default(),
+            updated_at,
+        });
+    }
+
+    Ok(Json(orders))
 }

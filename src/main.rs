@@ -4,7 +4,7 @@ use rocket::routes;
 use rocket_cors::{AllowedOrigins, CorsOptions};
 
 use crate::models::routes::{
-    DbState, add_menu_item, complete_order, confirm_order, create_order, get_menu, get_orders, health, list_users, login, profile, reset_db,
+    DbState, add_menu_item, analytics_customizations, analytics_menu_items, analytics_sales, complete_order, confirm_order, create_order, get_completed_orders, get_menu, get_orders, health, list_users, login, profile, reset_db,
 };
 
 pub mod models;
@@ -61,7 +61,11 @@ async fn main() -> Result<(), rocket::Error> {
                 get_orders,
                 confirm_order,
                 complete_order,
-                add_menu_item
+                add_menu_item,
+                analytics_sales,
+                analytics_customizations,
+                analytics_menu_items,
+                get_completed_orders
             ],
         )
         .launch()

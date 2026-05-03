@@ -74,3 +74,48 @@ pub struct OrderQueryFilter {
     pub date_from: Option<String>,
     pub date_to: Option<String>,
 }
+
+// Analytics Response Models
+
+#[derive(Debug, Serialize)]
+pub struct SalesData {
+    pub date: String,
+    pub total_sales: f64,
+    pub order_count: u32,
+    pub average_order_value: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SalesAnalytics {
+    pub total_sales: f64,
+    pub total_orders: u32,
+    pub average_order_value: f64,
+    pub daily_sales: Vec<SalesData>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CustomizationPopularity {
+    pub customization_id: String,
+    pub customization_label: String,
+    pub times_selected: u32,
+    pub most_popular_option: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MenuItemPopularity {
+    pub item_name: String,
+    pub times_ordered: u32,
+    pub total_revenue: f64,
+    pub average_final_price: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct OrderDetails {
+    pub id: String,
+    pub name: String,
+    pub items: Vec<OrderItemResponse>,
+    pub total: f64,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+}
