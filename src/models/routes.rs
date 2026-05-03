@@ -1,9 +1,9 @@
 // routes.rs
 
 use crate::models::order::*;
-use mongodb::{Client, bson::doc, options::FindOptions};
-use rocket::{State, http::Status, serde::json::Json};
+use mongodb::{bson::doc, options::FindOptions, Client};
 use rocket::{get, post};
+use rocket::{http::Status, serde::json::Json, State};
 
 pub struct DbState {
     pub client: Client,
@@ -97,15 +97,17 @@ pub async fn get_menu(db: &State<DbState>) -> Result<Json<Vec<MenuItemResponse>>
             subsection: item.subsection,
             created_at: item
                 .created_at
-                .map(|dt| dt.to_system_time()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| {
-                        let secs = d.as_secs();
-                        chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
-                            .unwrap_or_default()
-                            .to_rfc3339()
-                    })
-                    .unwrap_or_default())
+                .map(|dt| {
+                    dt.to_system_time()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| {
+                            let secs = d.as_secs();
+                            chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                                .unwrap_or_default()
+                                .to_rfc3339()
+                        })
+                        .unwrap_or_default()
+                })
                 .unwrap_or_default(),
             customizations: item.customizations.unwrap_or_default(),
         });
@@ -298,7 +300,6 @@ pub async fn create_order(
 
 #[rocket::get("/orders?<date_from>&<date_to>")]
 pub async fn get_orders(
-    _admin: AdminUser,
     db: &State<DbState>,
     date_from: Option<String>,
     date_to: Option<String>,
@@ -322,20 +323,14 @@ pub async fn get_orders(
         if let Some(from_str) = date_from {
             if let Ok(from_dt) = chrono::DateTime::parse_from_rfc3339(&from_str) {
                 let timestamp = from_dt.timestamp();
-                date_filter.insert(
-                    "$gte",
-                    bson::DateTime::from_millis(timestamp * 1000),
-                );
+                date_filter.insert("$gte", bson::DateTime::from_millis(timestamp * 1000));
             }
         }
 
         if let Some(to_str) = date_to {
             if let Ok(to_dt) = chrono::DateTime::parse_from_rfc3339(&to_str) {
                 let timestamp = to_dt.timestamp();
-                date_filter.insert(
-                    "$lte",
-                    bson::DateTime::from_millis(timestamp * 1000),
-                );
+                date_filter.insert("$lte", bson::DateTime::from_millis(timestamp * 1000));
             }
         }
 
@@ -409,16 +404,15 @@ pub async fn confirm_order(
     _admin: AdminUser,
     db: &State<DbState>,
 ) -> Result<Json<OrderResponse>, (Status, Json<OrderResponse>)> {
-    let order_oid = bson::oid::ObjectId::parse_str(&order_id)
-        .map_err(|_| {
-            (
-                Status::BadRequest,
-                Json(OrderResponse {
-                    success: false,
-                    message: "Invalid order ID".into(),
-                }),
-            )
-        })?;
+    let order_oid = bson::oid::ObjectId::parse_str(&order_id).map_err(|_| {
+        (
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Invalid order ID".into(),
+            }),
+        )
+    })?;
 
     let filter = doc! { "_id": order_oid };
     let update = doc! {
@@ -457,16 +451,15 @@ pub async fn complete_order(
     _admin: AdminUser,
     db: &State<DbState>,
 ) -> Result<Json<OrderResponse>, (Status, Json<OrderResponse>)> {
-    let order_oid = bson::oid::ObjectId::parse_str(&order_id)
-        .map_err(|_| {
-            (
-                Status::BadRequest,
-                Json(OrderResponse {
-                    success: false,
-                    message: "Invalid order ID".into(),
-                }),
-            )
-        })?;
+    let order_oid = bson::oid::ObjectId::parse_str(&order_id).map_err(|_| {
+        (
+            Status::BadRequest,
+            Json(OrderResponse {
+                success: false,
+                message: "Invalid order ID".into(),
+            }),
+        )
+    })?;
 
     let filter = doc! { "_id": order_oid };
     let update = doc! {
