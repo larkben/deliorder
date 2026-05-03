@@ -1,7 +1,11 @@
-use rocket::{launch, routes};
+use dotenvy::dotenv;
+use mongodb::Client;
+use rocket::routes;
 use rocket_cors::{AllowedOrigins, CorsOptions};
 
-use crate::models::routes::{create_order, get_menu, health, list_users, login, profile, reset_db};
+use crate::models::routes::{
+    DbState, create_order, get_menu, health, list_users, login, profile, reset_db,
+};
 
 pub mod models;
 
@@ -34,9 +38,10 @@ async fn main() -> Result<(), rocket::Error> {
     .unwrap();
 
     // mongo db
+    dotenv().ok(); // load .env file
 
     let client =
-        Client::with_uri_str(std::env::var("MONGODB_URI").expect("MongoDB Uri must be set."))
+        Client::with_uri_str(dotenvy::var("MONGODB_URI").expect("MongoDB Uri must be set."))
             .await
             .expect("Failed to connect to MongoDB.");
 
