@@ -222,3 +222,69 @@ pub async fn create_order(
         message: "Order created".into(),
     }))
 }
+
+// order query
+
+#[rocket::get("/orders")]
+pub async fn get_orders(db: &State<DbState>) -> Result<Json<Vec<OrderResponse>>, Status> {
+    let collection = db
+        .client
+        .database("food_order")
+        .collection::<Order>("orders");
+
+    let options = FindOptions::builder()
+        .sort(doc! { "created_at": -1 })
+        .build();
+
+    let mut cursor = collection
+        .find(doc! {})
+        .with_options(options)
+        .await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let mut orders = Vec::new();
+    while cursor
+        .advance()
+        .await
+        .map_err(|_| Status::InternalServerError)?
+    {
+        let o = cursor
+            .deserialize_current()
+            .map_err(|_| Status::InternalServerError)?;
+
+        orders.push(OrderQueryResponse {
+            id: o.id.map(|id| id.to_hex()).unwrap_or_default(),
+            name: o.name,
+            items: o
+                .items
+                .into_iter()
+                .map(|item| OrderItemResponse {
+                    name: item.name,
+                    base_price: item.base_price,
+                    final_price: item.final_price,
+                    selections: item.selections,
+                    note: item.note,
+                    section: item.section,
+                    subsection: item.subsection,
+                    completed: item.completed.unwrap_or(false),
+                })
+                .collect(),
+            total: o.total,
+            status: o.status,
+            created_at: o
+                .created_at
+                .to_system_time()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| {
+                    let secs = d.as_secs();
+                    // format as ISO 8601
+                    chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+                        .unwrap_or_default()
+                        .to_rfc3339()
+                })
+                .unwrap_or_default(),
+        });
+    }
+
+    Ok(Json(orders))
+}

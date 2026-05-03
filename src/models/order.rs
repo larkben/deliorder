@@ -89,3 +89,27 @@ pub struct MenuItemResponse {
     pub subsection: Option<String>,
     pub customizations: Vec<Customization>,
 }
+
+// order query
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrderItemResponse {
+    pub name: String,
+    pub base_price: f64,
+    pub final_price: f64,
+    pub selections: HashMap<String, Selection>,
+    pub note: String,
+    pub section: Option<String>,
+    pub subsection: Option<String>,
+    pub completed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrderQueryResponse {
+    pub id: String,
+    pub name: String,
+    pub items: Vec<OrderItemResponse>,
+    pub total: f64,
+    pub status: String,
+    pub created_at: String, // ISO string
+}

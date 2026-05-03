@@ -57,7 +57,8 @@ async fn main() -> Result<(), rocket::Error> {
                 list_users,
                 reset_db,
                 get_menu,
-                create_order
+                create_order,
+                get_orders
             ],
         )
         .launch()
