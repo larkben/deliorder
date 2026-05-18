@@ -1,10 +1,7 @@
-import { MongoClient } from "mongodb";
-import { MONGODB_URI } from "$env/static/private";
 import type { Actions } from "./$types";
 import { redirect, fail } from "@sveltejs/kit";
 import { db } from "$lib/server/db";
-
-const client = new MongoClient(MONGODB_URI);
+import { getAvailableDeliveryDay, listOpenFutureDeliveryDays } from "$lib/server/deliveryDays";
 
 import type { PageServerLoad } from "./$types";
 
@@ -51,6 +48,8 @@ export const load: PageServerLoad = async (event) => {
     return {
         session,
         userName: session.user.name || session.user.email || "User",
+        userEmail: session.user.email || "",
+        deliveryDays: await listOpenFutureDeliveryDays(),
         products: products.map((p) => ({
             id: p._id.toString(),
             name: p.name,
@@ -64,13 +63,41 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request }) => {
+  default: async ({ request, locals }) => {
     const data = await request.formData();
+    const session = await locals.auth();
 
     // get name
     const name = data.get("name")?.toString();
     if (!name) {
       return fail(400, { error: "No name for order" });
+    }
+
+    const userEmail = session?.user?.email;
+    const deliveryDayId = data.get("deliveryDayId")?.toString();
+
+    if (!userEmail) {
+      return fail(400, { error: "Missing user email" });
+    }
+
+    if (!deliveryDayId) {
+      return fail(400, { error: "Choose an open delivery day" });
+    }
+
+    const deliveryDay = await getAvailableDeliveryDay(deliveryDayId);
+
+    if (!deliveryDay) {
+      return fail(400, { error: "That delivery day is closed or unavailable" });
+    }
+
+    const existingOrder = await db.collection("orders").findOne({
+      userEmail,
+      deliveryDayId,
+      status: { $ne: "cancelled" },
+    });
+
+    if (existingOrder) {
+      return fail(409, { error: "You already have an order for this delivery day" });
     }
 
     // Expect cart items as JSON string
@@ -128,19 +155,18 @@ export const actions: Actions = {
       0
     );
 
-    // Connect to DB
-    await client.connect();
-    const orderDb = client.db("food_order");
-
-    await orderDb.collection("orders").insertOne({
+    const result = await db.collection("orders").insertOne({
       name,
+      userEmail,
+      deliveryDayId,
+      deliveryDayLabel: deliveryDay.label,
+      deliveryDayDate: deliveryDay.date,
       items: validatedItems,
       total,
       status: "new",
       createdAt: new Date(),
     });
 
-    // Redirect back to Orders page
-    throw redirect(303, "/orders");
+    throw redirect(303, `/order/confirmation?id=${result.insertedId.toString()}`);
   },
 };

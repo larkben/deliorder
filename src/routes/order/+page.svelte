@@ -6,6 +6,8 @@
 
     // Get user name from session
     let name = data.userName;
+    let selectedDeliveryDayId = "";
+    let orderError = "";
     let isNameFromSession = true; // Flag to make it read-only
 
     type CustomizationOption = {
@@ -172,22 +174,30 @@
     }
 
     async function submitOrder() {
+        orderError = "";
         if (cart.length === 0) return;
         if (name === "") return;
+        if (!selectedDeliveryDayId) {
+            orderError = "Choose a delivery day before submitting your order.";
+            return;
+        }
 
         const formData = new FormData();
         formData.append("name", name);
+        formData.append("deliveryDayId", selectedDeliveryDayId);
         formData.append("items", JSON.stringify(cart));
 
         const res = await fetch("/order", { method: "POST", body: formData });
 
         if (!res.ok) {
-            alert("Failed to submit order");
+            orderError = res.status === 409
+                ? "You already have an order for that delivery day."
+                : "Failed to submit order. Check your delivery day and try again.";
             return;
         }
 
         cart = [];
-        goto("/orders");
+        goto(`${new URL(res.url).pathname}${new URL(res.url).search}`);
     }
 
     async function selectSection(section: string) {
@@ -268,6 +278,20 @@
             <option value="b">B</option>
         </select>
     </label>
+
+    <label>
+        Delivery Day
+        <select bind:value={selectedDeliveryDayId} required>
+            <option value="">Choose a delivery day</option>
+            {#each data.deliveryDays as day}
+                <option value={day.id}>{day.label} - {new Date(`${day.date}T00:00:00`).toLocaleDateString()}</option>
+            {/each}
+        </select>
+    </label>
+
+    {#if data.deliveryDays.length === 0}
+        <p class="form-note">No delivery days are currently open.</p>
+    {/if}
 
     <nav class="menu-nav">
         <button
@@ -365,7 +389,11 @@
         {/if}
     </section>
 
-    <button class="submit" on:click={submitOrder} disabled={cart.length === 0}>
+    {#if orderError}
+        <p class="order-error">{orderError}</p>
+    {/if}
+
+    <button class="submit" on:click={submitOrder} disabled={cart.length === 0 || !selectedDeliveryDayId}>
         Submit Order
     </button>
 
@@ -674,6 +702,21 @@
         margin-top: 0.25rem;
         border: 1px solid #ddd;
         border-radius: 4px;
+    }
+
+    .form-note,
+    .order-error {
+        margin: 0.5rem 0 1rem;
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
+
+    .form-note {
+        color: #666;
+    }
+
+    .order-error {
+        color: #b42318;
     }
 
     .menu-nav {

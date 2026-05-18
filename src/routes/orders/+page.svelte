@@ -15,7 +15,9 @@
     let customEndDate = "";
 
     // Status filter
-    let statusFilter: "all" | "new" | "closed" = "all";
+    type OrderStatus = "new" | "confirmed" | "complete";
+
+    let statusFilter: "all" | OrderStatus = "all";
 
     // Search
     let searchQuery = "";
@@ -30,7 +32,7 @@
         selectedOrder = null;
     }
 
-    async function updateStatus(orderId: string, status: "new" | "closed") {
+    async function updateStatus(orderId: string, status: OrderStatus) {
         if (!orderId) {
             console.error("Missing order id", { orderId });
             return;
@@ -48,6 +50,10 @@
         allOrders = allOrders.map((o) =>
             o._id === orderId ? { ...o, status } : o
         );
+
+        if (selectedOrder && selectedOrder._id === orderId) {
+            selectedOrder = { ...selectedOrder, status };
+        }
     }
 
     async function toggleItemCompleted(orderId: string, itemIndex: number) {
@@ -203,11 +209,23 @@
         });
     }
 
+    function formatDeliveryDay(order: (typeof allOrders)[0]): string {
+        if (!order.deliveryDayDate) {
+            return order.deliveryDayLabel || "No delivery day";
+        }
+
+        return `${order.deliveryDayLabel} · ${new Date(`${order.deliveryDayDate}T00:00:00`).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+        })}`;
+    }
+
     // Analytics - make reactive to allOrders changes
     $: totalRevenue = filteredOrders.reduce((sum, o) => sum + o.total, 0);
     $: averageOrderValue = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
     $: newOrdersCount = filteredOrders.filter((o) => o.status === "new").length;
-    $: completedOrdersCount = filteredOrders.filter((o) => o.status === "closed").length;
+    $: confirmedOrdersCount = filteredOrders.filter((o) => o.status === "confirmed").length;
+    $: completedOrdersCount = filteredOrders.filter((o) => o.status === "complete").length;
 
     // Top items
     $: topItems = (() => {
@@ -256,6 +274,10 @@
         <div class="stat-card">
             <div class="stat-label">Active Orders</div>
             <div class="stat-value highlight">{newOrdersCount}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Confirmed</div>
+            <div class="stat-value">{confirmedOrdersCount}</div>
         </div>
     </section>
 
@@ -333,13 +355,19 @@
                     class:active={statusFilter === "new"}
                     on:click={() => (statusFilter = "new")}
                 >
-                    Active ({allOrders.filter((o) => o.status === "new").length})
+                    New ({allOrders.filter((o) => o.status === "new").length})
                 </button>
                 <button
-                    class:active={statusFilter === "closed"}
-                    on:click={() => (statusFilter = "closed")}
+                    class:active={statusFilter === "confirmed"}
+                    on:click={() => (statusFilter = "confirmed")}
                 >
-                    Completed ({allOrders.filter((o) => o.status === "closed").length})
+                    Confirmed ({allOrders.filter((o) => o.status === "confirmed").length})
+                </button>
+                <button
+                    class:active={statusFilter === "complete"}
+                    on:click={() => (statusFilter = "complete")}
+                >
+                    Complete ({allOrders.filter((o) => o.status === "complete").length})
                 </button>
             </div>
         </div>
@@ -364,7 +392,7 @@
                 {@const progress = getOrderProgress(order)}
                 <div 
                     class="order-card" 
-                    class:completed={order.status === "closed"}
+                    class:completed={order.status === "complete"}
                     on:click={() => openOrder(order)}
                     on:keydown={(e) => e.key === 'Enter' && openOrder(order)}
                     role="button"
@@ -376,6 +404,8 @@
                             <div class="order-meta">
                                 <span class="time">{formatTime(order.createdAt)}</span>
                                 <span class="date">{formatDate(order.createdAt)}</span>
+                                <span class="date">{formatDeliveryDay(order)}</span>
+                                <span class="status-badge">{order.status}</span>
                             </div>
                         </div>
                         <div class="order-summary">
@@ -419,6 +449,11 @@
                             <div class="progress-fill" style="width: {progress}%"></div>
                             <span class="progress-text">{progress}% Complete</span>
                         </div>
+                        <div class="status-actions" on:click|stopPropagation>
+                            <button class:active={order.status === "new"} on:click={() => updateStatus(order._id, "new")} type="button">New</button>
+                            <button class:active={order.status === "confirmed"} on:click={() => updateStatus(order._id, "confirmed")} type="button">Confirmed</button>
+                            <button class:active={order.status === "complete"} on:click={() => updateStatus(order._id, "complete")} type="button">Complete</button>
+                        </div>
                     </div>
                 </div>
             {/each}
@@ -427,6 +462,7 @@
 
     <!-- Modal -->
     {#if showModal && selectedOrder}
+        {@const selectedOrderId = selectedOrder._id}
         <div
             class="modal-backdrop"
             on:click={closeModal}
@@ -442,6 +478,7 @@
             <h2>Order from {selectedOrder.name}</h2>
             <div class="modal-meta">
                 {formatDate(selectedOrder.createdAt)} at {formatTime(selectedOrder.createdAt)}
+                <br />{formatDeliveryDay(selectedOrder)} · {selectedOrder.status}
             </div>
 
             <div class="modal-items">
@@ -450,7 +487,7 @@
                         <button
                             class="item-checkbox"
                             class:checked={item.completed}
-                            on:click={() => toggleItemCompleted(selectedOrder._id, itemIndex)}
+                            on:click={() => toggleItemCompleted(selectedOrderId, itemIndex)}
                             type="button"
                         >
                             {#if item.completed}✓{/if}
@@ -484,6 +521,9 @@
             </div>
 
             <div class="modal-actions">
+                <button on:click={() => updateStatus(selectedOrderId, "new")} class="btn-status" class:active={selectedOrder.status === "new"}>New</button>
+                <button on:click={() => updateStatus(selectedOrderId, "confirmed")} class="btn-status" class:active={selectedOrder.status === "confirmed"}>Confirmed</button>
+                <button on:click={() => updateStatus(selectedOrderId, "complete")} class="btn-status" class:active={selectedOrder.status === "complete"}>Complete</button>
                 <button on:click={closeModal} class="btn-primary">Close</button>
             </div>
         </div>
@@ -798,6 +838,39 @@
     .order-footer {
         padding-top: 1rem;
         border-top: 2px solid #f0f0f0;
+    }
+
+    .status-badge {
+        background: #f0f0f0;
+        border-radius: 4px;
+        color: #555;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.2rem 0.45rem;
+        text-transform: capitalize;
+    }
+
+    .status-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .status-actions button {
+        flex: 1;
+        min-width: 90px;
+        padding: 0.55rem;
+        border: none;
+        border-radius: 6px;
+        background: #f0f0f0;
+        color: #333;
+        cursor: pointer;
+        font-weight: 700;
+    }
+
+    .status-actions button.active {
+        background: #2a9d8f;
+        color: white;
     }
 
     .progress-bar {

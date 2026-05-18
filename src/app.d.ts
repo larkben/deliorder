@@ -4,6 +4,7 @@ declare global {
     namespace App {
         interface Locals {
             auth: () => Promise<Session | null>;
+            adminUser: { username: string } | null;
         }
         interface PageData {
             session?: Session | null;

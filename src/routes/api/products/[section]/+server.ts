@@ -1,7 +1,8 @@
 import { json } from "@sveltejs/kit";
 import { db } from "$lib/server/db";
+import type { RequestHandler } from "./$types";
 
-export async function GET({ params }) {
+export const GET: RequestHandler = async ({ params }) => {
     const { section } = params;
 
     const products = await db
@@ -20,4 +21,4 @@ export async function GET({ params }) {
             customizations: p.customizations || [],
         }))
     );
-}
+};

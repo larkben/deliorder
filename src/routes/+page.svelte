@@ -1,23 +1,43 @@
 <script lang="ts">
     import { signIn } from "@auth/sveltekit/client";
+    import { enhance } from "$app/forms";
     import { goto } from "$app/navigation";
 
     export let data;
+    export let form;
 
     let username = "";
     let password = "";
     let showAdminLogin = false;
     let showGoogleLogin = false;
+    let googleLoginError = "";
+    let googleLoginLoading = false;
+    $: adminError = form?.adminError;
 
     async function handleGoogleLogin() {
-        await signIn("google", { callbackUrl: "/order" });
-    }
+        googleLoginError = "";
+        googleLoginLoading = true;
 
-    function handleAdminLogin() {
-        // TODO: Implement admin authentication
-        alert(`Admin logging in as ${username}`);
-        showAdminLogin = false;
-        goto("/orders");
+        try {
+            const result = await signIn("google", {
+                redirect: false,
+                redirectTo: "/order",
+            });
+
+            if (result?.url) {
+                window.location.href = result.url;
+                return;
+            }
+
+            googleLoginError = result?.error
+                ? `Google sign-in failed: ${result.error}`
+                : "Google sign-in did not return a redirect URL.";
+        } catch (error) {
+            console.error(error);
+            googleLoginError = "Google sign-in could not start. Check the auth URL and Google OAuth settings.";
+        } finally {
+            googleLoginLoading = false;
+        }
     }
 
     function toggleAdminLogin() {
@@ -33,7 +53,8 @@
     }
 
     // If already logged in, show option to continue
-    $: isLoggedIn = !!data?.session?.user;
+    $: currentUser = data?.session?.user;
+    $: isLoggedIn = !!currentUser;
 </script>
 
 <!-- Admin login trigger -->
@@ -48,11 +69,30 @@
         <button class="close-btn" on:click={toggleAdminLogin}>✕</button>
         <h3>Admin Login</h3>
 
-        <input type="text" placeholder="Username" bind:value={username} />
+        <form
+            method="POST"
+            action="?/adminLogin"
+            use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === "redirect") {
+                        await goto(result.location);
+                        return;
+                    }
 
-        <input type="password" placeholder="Password" bind:value={password} />
+                    await update();
+                };
+            }}
+        >
+            <input type="text" name="username" placeholder="Username" bind:value={username} />
 
-        <button class="login-btn" on:click={handleAdminLogin}>Login</button>
+            <input type="password" name="password" placeholder="Password" bind:value={password} />
+
+            {#if adminError}
+                <p class="login-error">{adminError}</p>
+            {/if}
+
+            <button class="login-btn" type="submit">Login</button>
+        </form>
     </div>
 {/if}
 
@@ -64,7 +104,12 @@
         <h2>Sign in to order</h2>
         <p class="modal-description">Sign in with your school Google account to continue</p>
 
-        <button class="google-signin-btn" on:click={handleGoogleLogin}>
+        <button
+            class="google-signin-btn"
+            on:click={handleGoogleLogin}
+            disabled={googleLoginLoading}
+            aria-busy={googleLoginLoading}
+        >
             <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
                 <path
                     fill="#EA4335"
@@ -84,8 +129,12 @@
                 />
                 <path fill="none" d="M0 0h48v48H0z" />
             </svg>
-            Sign in with Google
+            {googleLoginLoading ? "Opening Google..." : "Sign in with Google"}
         </button>
+
+        {#if googleLoginError}
+            <p class="login-error">{googleLoginError}</p>
+        {/if}
     </div>
 {/if}
 
@@ -95,7 +144,7 @@
 
     {#if isLoggedIn}
         <div class="user-info">
-            <p>Welcome back, {data.session.user.name}!</p>
+            <p>Welcome back, {currentUser?.name ?? "there"}!</p>
             <a href="/order" class="order-link"> Continue to Order </a>
         </div>
     {:else}
@@ -258,6 +307,18 @@
         box-shadow: 0 2px 8px rgba(66, 133, 244, 0.2);
     }
 
+    .google-signin-btn:disabled {
+        cursor: wait;
+        opacity: 0.7;
+    }
+
+    .login-error {
+        margin: 1rem 0 0;
+        color: #b42318;
+        font-size: 0.9rem;
+        line-height: 1.4;
+    }
+
     .admin-popup h3 {
         margin: 0 0 1.5rem 0;
         color: #333;
@@ -288,4 +349,3 @@
         background: #555;
     }
 </style>
-

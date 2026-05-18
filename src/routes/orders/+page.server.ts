@@ -19,9 +19,13 @@ type OrderItem = {
 type Order = {
   _id: ObjectId;
   name: string;
+  userEmail?: string;
+  deliveryDayId?: string;
+  deliveryDayLabel?: string;
+  deliveryDayDate?: string;
   items: OrderItem[];
   total: number;
-  status: "new" | "closed";
+  status: "new" | "confirmed" | "complete" | "closed";
   createdAt: Date;
 };
 
@@ -40,6 +44,10 @@ export const load: PageServerLoad = async () => {
   const cleanedOrders = orders.map((o) => ({
     _id: o._id.toString(),
     name: o.name,
+    userEmail: o.userEmail || "",
+    deliveryDayId: o.deliveryDayId || "",
+    deliveryDayLabel: o.deliveryDayLabel || "Unassigned",
+    deliveryDayDate: o.deliveryDayDate || "",
     items: o.items.map((item) => ({
       name: item.name,
       basePrice: item.basePrice || item.price || 0,
@@ -52,7 +60,7 @@ export const load: PageServerLoad = async () => {
       completed: item.completed || false,
     })),
     total: o.total,
-    status: o.status,
+    status: o.status === "closed" ? "complete" : o.status,
     createdAt: o.createdAt.toISOString(), // Convert to ISO string for proper serialization
   }));
 
