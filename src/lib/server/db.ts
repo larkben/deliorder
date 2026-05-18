@@ -6,9 +6,21 @@ if (!MONGODB_URI) {
 }
 
 const client = new MongoClient(MONGODB_URI);
+const database = client.db('food_order');
 
-// Module-scoped promise (initialized immediately)
-const clientPromise: Promise<MongoClient> = client.connect();
+let clientPromise: Promise<MongoClient> | null = null;
 
-export const db = (await clientPromise).db('food_order');
+function getClient() {
+    if (!clientPromise) {
+        clientPromise = client.connect();
+    }
 
+    return clientPromise;
+}
+
+export const db = database;
+
+export async function connectDb() {
+    await getClient();
+    return database;
+}

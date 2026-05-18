@@ -1,8 +1,6 @@
 import type { PageServerLoad } from "./$types";
-import { MongoClient, ObjectId } from "mongodb";
-import { MONGODB_URI } from "$env/static/private";
-
-const client = new MongoClient(MONGODB_URI);
+import { ObjectId } from "mongodb";
+import { db } from "$lib/server/db";
 
 type OrderItem = {
   name: string;
@@ -30,9 +28,6 @@ type Order = {
 };
 
 export const load: PageServerLoad = async () => {
-  await client.connect();
-  const db = client.db("food_order");
-
   // Get all orders, newest first
   const orders = await db
     .collection<Order>("orders")

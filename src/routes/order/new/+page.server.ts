@@ -1,9 +1,6 @@
 import type { Actions } from "./$types";
 import { redirect, fail } from "@sveltejs/kit";
-import { MongoClient } from "mongodb";
-import { MONGODB_URI } from "$env/static/private";
-
-const client = new MongoClient(MONGODB_URI);
+import { db } from "$lib/server/db";
 
 type CustomizationOption = {
   value: string;
@@ -64,9 +61,6 @@ export const actions: Actions = {
         return fail(400, { error: "Invalid customizations format" });
       }
     }
-
-    await client.connect();
-    const db = client.db("food_order");
 
     const menuItem: any = {
       name,
