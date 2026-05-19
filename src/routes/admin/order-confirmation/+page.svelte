@@ -70,6 +70,9 @@
                             <div class="item-row">
                                 <div>
                                     <strong>{item.name}</strong>
+                                    <!-- So it's being displayed like this: 918d0fc3-defa-4ed0-b230-88a90531a846: White -->
+                                    <!-- We want this: White -->
+                                    <!-- The coded gibberish means nothing to our frontend user. Simplify It. -->
                                     {#each formatSelections(item.selections) as selection}
                                         <span class="selection">{selection}</span>
                                     {/each}
