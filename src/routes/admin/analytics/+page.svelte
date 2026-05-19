@@ -56,6 +56,8 @@
                 {#each data.sectionTotals as section}
                     <div class="section-row">
                         <div>
+                            <!-- This it taking the category of sandwhich we want the actual type of sandwhich in this example case: Sandwhich -> Paninis -> Grilled Cheese -->
+                            <!-- We need this info -->
                             <strong>{section.section}</strong>
                             <span>{section.count} items</span>
                         </div>
@@ -72,6 +74,8 @@
             {:else}
                 {#each data.optionTotals as option}
                     <div class="section-row">
+                        <!-- Currently displaying like this: 918d0fc3-defa-4ed0-b230-88a90531a846: White -->
+                        <!-- Should be like this: White: -->
                         <strong>{option.option}</strong>
                         <span>{option.count}x</span>
                     </div>
@@ -87,8 +91,10 @@
                 {#each data.recentOrders as order}
                     <div class="order-row">
                         <div>
+                            <!-- Should have order total and order user name here ideally (Name: Total) -->
                             <strong>{formatCurrency(order.total)}</strong>
                             <span>{order.deliveryDayLabel} · {new Date(order.createdAt).toLocaleString()}</span>
+                            <!-- So I want to also have the items ordered in order here too (sandwhiches, and or drinks, etc) with the toppings on each sandwhich(es) -->
                         </div>
                         <span class:active={order.status === "new"}>{order.status}</span>
                     </div>
