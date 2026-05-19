@@ -297,6 +297,7 @@
     {/if}
 
     <!-- Filters -->
+    <!-- I'd like to add a by delivery day filter -->
     <section class="filters-section">
         <div class="filter-group">
             <label>Date Range</label>
