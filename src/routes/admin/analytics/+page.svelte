@@ -9,6 +9,7 @@
     $: maxDayOrders = Math.max(1, ...data.deliveryDayTotals.map((day: any) => day.count));
 </script>
 
+
 <main class="analytics-page">
     <header>
         <a href="/admin" class="back-link">Back to Admin</a>
