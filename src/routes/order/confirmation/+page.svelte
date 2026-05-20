@@ -1,8 +1,14 @@
 <script lang="ts">
-    export let data;
+    import { formatDisplaySelections, selectionText } from "$lib/orderDisplay";
+
+    export let data: any;
 
     const formatCurrency = (value: number) =>
         new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
+
+    function itemSelections(item: NonNullable<typeof data.order>["items"][number]) {
+        return formatDisplaySelections(item.displaySelections, item.selections).map(selectionText);
+    }
 </script>
 
 <main class="confirmation-page">
@@ -13,6 +19,16 @@
             <p class="message">Your order was sent to the deli counter.</p>
 
             <div class="summary">
+                <div>
+                    <span>Name</span>
+                    <strong>{data.order.name}</strong>
+                </div>
+                {#if data.order.userEmail}
+                    <div>
+                        <span>Email</span>
+                        <strong>{data.order.userEmail}</strong>
+                    </div>
+                {/if}
                 <div>
                     <span>Order Number</span>
                     <strong>{data.order.id.slice(-6).toUpperCase()}</strong>
@@ -42,6 +58,9 @@
                     <div class="item-row">
                         <div>
                             <strong>{item.name}</strong>
+                            {#each itemSelections(item) as selection}
+                                <span>{selection}</span>
+                            {/each}
                             {#if item.note}
                                 <span>{item.note}</span>
                             {/if}

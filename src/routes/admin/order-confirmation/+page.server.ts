@@ -9,6 +9,7 @@ type OrderItem = {
     finalPrice?: number;
     price?: number;
     selections?: Record<string, string | string[]>;
+    displaySelections?: Array<{ label: string; value: string }>;
     note?: string;
     section?: string;
     subsection?: string;
@@ -37,6 +38,7 @@ function serializeOrder(order: OrderRecord) {
             name: item.name,
             price: item.finalPrice ?? item.price ?? item.basePrice ?? 0,
             selections: item.selections ?? {},
+            displaySelections: item.displaySelections ?? [],
             note: item.note ?? "",
             section: item.section ?? "",
             subsection: item.subsection ?? "",

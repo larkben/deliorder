@@ -1,8 +1,9 @@
 <script lang="ts">
     import { enhance } from "$app/forms";
+    import { formatDisplaySelections, selectionText } from "$lib/orderDisplay";
 
-    export let data;
-    export let form;
+    export let data: any;
+    export let form: any;
 
     const formatCurrency = (value: number) =>
         new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
@@ -15,18 +16,8 @@
         return `${order.deliveryDayLabel} · ${new Date(`${order.deliveryDayDate}T00:00:00`).toLocaleDateString()}`;
     }
 
-    function formatSelections(selections: Record<string, string | string[]>) {
-        return Object.entries(selections).flatMap(([label, value]) => {
-            if (typeof value === "string" && value) {
-                return [`${label}: ${value}`];
-            }
-
-            if (Array.isArray(value)) {
-                return value.filter(Boolean).map((option) => `${label}: ${option}`);
-            }
-
-            return [];
-        });
+    function formatSelections(item: (typeof data.orders)[number]["items"][number]) {
+        return formatDisplaySelections(item.displaySelections, item.selections).map(selectionText);
     }
 </script>
 
@@ -70,10 +61,7 @@
                             <div class="item-row">
                                 <div>
                                     <strong>{item.name}</strong>
-                                    <!-- So it's being displayed like this: 918d0fc3-defa-4ed0-b230-88a90531a846: White -->
-                                    <!-- We want this: White -->
-                                    <!-- The coded gibberish means nothing to our frontend user. Simplify It. -->
-                                    {#each formatSelections(item.selections) as selection}
+                                    {#each formatSelections(item) as selection}
                                         <span class="selection">{selection}</span>
                                     {/each}
                                     {#if item.note}

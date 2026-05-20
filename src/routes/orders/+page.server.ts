@@ -23,7 +23,7 @@ type Order = {
   deliveryDayDate?: string;
   items: OrderItem[];
   total: number;
-  status: "new" | "confirmed" | "complete" | "closed";
+  status: "new" | "confirmed" | "complete" | "closed" | "cancelled";
   createdAt: Date;
 };
 
@@ -31,7 +31,7 @@ export const load: PageServerLoad = async () => {
   // Get all orders, newest first
   const orders = await db
     .collection<Order>("orders")
-    .find({})
+    .find({ status: { $ne: "cancelled" } })
     .sort({ createdAt: -1 })
     .toArray();
 

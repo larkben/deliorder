@@ -5,7 +5,7 @@ import { db } from "$lib/server/db";
 
 type OrderRecord = {
     total?: number;
-    status?: "new" | "confirmed" | "complete" | "closed";
+    status?: "new" | "confirmed" | "complete" | "closed" | "cancelled";
     createdAt?: Date;
 };
 
@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         throw redirect(303, "/");
     }
 
-    const orders = await db.collection<OrderRecord>("orders").find({}).toArray();
+    const orders = await db.collection<OrderRecord>("orders").find({ status: { $ne: "cancelled" } }).toArray();
     const totalRevenue = orders.reduce((sum, order) => sum + (order.total ?? 0), 0);
     const activeOrders = orders.filter((order) => order.status === "new").length;
     const confirmedOrders = orders.filter((order) => order.status === "confirmed").length;

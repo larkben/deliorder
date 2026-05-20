@@ -1,13 +1,17 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { goto } from "$app/navigation";
+    import { formatDisplaySelections, selectionText } from "$lib/orderDisplay";
 
-    export let data;
+    export let data: any;
 
     // Get user name from session
     let name = data.userName;
     let selectedDeliveryDayId = "";
     let orderError = "";
+    let showExistingOrderModal = false;
+    let showPreviousOrders = false;
+    let existingOrderActionError = "";
     let isNameFromSession = true; // Flag to make it read-only
 
     type CustomizationOption = {
@@ -48,6 +52,13 @@
     let selections: Record<string, string | string[]> = {};
     let activeSection: string = "sandwiches";
     let filteredProducts: Product[] = [];
+    let userOrders: any[] = data.orders;
+
+    $: selectedDeliveryDayOrder = userOrders.find(
+        (order) => order.deliveryDayId === selectedDeliveryDayId && order.status !== "cancelled",
+    );
+    $: currentOrders = userOrders.filter((order) => order.status === "new" || order.status === "confirmed");
+    $: previousOrders = userOrders.filter((order) => order.status === "complete" || order.status === "cancelled");
 
     /* OPEN MODAL FOR CUSTOMIZATION */
     function openModal(product: Product) {
@@ -145,13 +156,6 @@
     
     $: canAdd = selectedProduct && selections && canAddToCart();
 
-    $: {
-        console.log("🔄 REACTIVE UPDATE:");
-        console.log("  selectedProduct:", selectedProduct?.name);
-        console.log("  selections:", selections);
-        console.log("  canAdd:", canAdd);
-    }
-
     function addToCart() {
         if (!selectedProduct || !canAdd) return;
         const finalPrice = calculateFinalPrice(selectedProduct, selections);
@@ -181,6 +185,10 @@
             orderError = "Choose a delivery day before submitting your order.";
             return;
         }
+        if (selectedDeliveryDayOrder) {
+            showExistingOrderModal = true;
+            return;
+        }
 
         const formData = new FormData();
         formData.append("name", name);
@@ -193,11 +201,47 @@
             orderError = res.status === 409
                 ? "You already have an order for that delivery day."
                 : "Failed to submit order. Check your delivery day and try again.";
+            if (res.status === 409) {
+                showExistingOrderModal = true;
+            }
             return;
         }
 
         cart = [];
         goto(`${new URL(res.url).pathname}${new URL(res.url).search}`);
+    }
+
+    async function cancelExistingOrder() {
+        if (!selectedDeliveryDayOrder || selectedDeliveryDayOrder.status !== "new") return;
+
+        existingOrderActionError = "";
+        const res = await fetch(`/api/my-orders/${selectedDeliveryDayOrder.id}/cancel`, {
+            method: "PATCH",
+        });
+
+        if (!res.ok) {
+            existingOrderActionError = "Only unconfirmed orders can be cancelled.";
+            return;
+        }
+
+        userOrders = userOrders.map((order) =>
+            order.id === selectedDeliveryDayOrder.id
+                ? { ...order, status: "cancelled" }
+                : order,
+        );
+        showExistingOrderModal = false;
+    }
+
+    function orderSelections(item: (typeof userOrders)[number]["items"][number]) {
+        return formatDisplaySelections(item.displaySelections, item.selections).map(selectionText);
+    }
+
+    function formatDeliveryDay(order: (typeof userOrders)[number]) {
+        const date = order.deliveryDayDate
+            ? new Date(`${order.deliveryDayDate}T00:00:00`).toLocaleDateString()
+            : "";
+
+        return date ? `${order.deliveryDayLabel} - ${date}` : order.deliveryDayLabel;
     }
 
     async function selectSection(section: string) {
@@ -281,7 +325,15 @@
 
     <label>
         Delivery Day
-        <select bind:value={selectedDeliveryDayId} required>
+        <select
+            bind:value={selectedDeliveryDayId}
+            on:change={() => {
+                if (selectedDeliveryDayOrder) {
+                    showExistingOrderModal = true;
+                }
+            }}
+            required
+        >
             <option value="">Choose a delivery day</option>
             {#each data.deliveryDays as day}
                 <option value={day.id}>{day.label} - {new Date(`${day.date}T00:00:00`).toLocaleDateString()}</option>
@@ -292,6 +344,45 @@
     {#if data.deliveryDays.length === 0}
         <p class="form-note">No delivery days are currently open.</p>
     {/if}
+
+    {#if showPreviousOrders}
+        <div class="drawer-backdrop" on:click={() => (showPreviousOrders = false)} on:keydown={(e) => e.key === 'Escape' && (showPreviousOrders = false)} role="button" tabindex="-1" aria-label="Close previous orders"></div>
+    {/if}
+    <aside class:open={showPreviousOrders} class="previous-drawer" aria-hidden={!showPreviousOrders}>
+        <div class="drawer-header">
+            <div>
+                <span>History</span>
+                <h2>Previous Orders</h2>
+            </div>
+            <button type="button" on:click={() => (showPreviousOrders = false)} aria-label="Close previous orders">✕</button>
+        </div>
+
+        {#if previousOrders.length === 0}
+            <p class="empty compact">No previous orders yet.</p>
+        {:else}
+            <div class="history-list">
+                {#each previousOrders as order}
+                    <div class="history-card previous">
+                        <div class="history-header">
+                            <div>
+                                <strong>{formatDeliveryDay(order)}</strong>
+                                <span>{order.status}</span>
+                            </div>
+                            <strong>${order.total.toFixed(2)}</strong>
+                        </div>
+                        {#each order.items as item}
+                            <div class="history-item">
+                                <span>{item.name}</span>
+                                {#each orderSelections(item) as selection}
+                                    <small>{selection}</small>
+                                {/each}
+                            </div>
+                        {/each}
+                    </div>
+                {/each}
+            </div>
+        {/if}
+    </aside>
 
     <nav class="menu-nav">
         <button
@@ -397,7 +488,81 @@
         Submit Order
     </button>
 
+    <div class="order-tools">
+        <section class="order-history">
+            <div class="section-heading">
+                <h2>Your Current Orders</h2>
+                <button class="drawer-toggle" type="button" on:click={() => (showPreviousOrders = true)}>
+                    Previous Orders ({previousOrders.length})
+                </button>
+            </div>
+            {#if currentOrders.length === 0}
+                <p class="empty compact">No current orders.</p>
+            {:else}
+                <div class="history-list current-orders-scroll">
+                    {#each currentOrders as order}
+                        <div class="history-card">
+                            <div class="history-header">
+                                <div>
+                                    <strong>{formatDeliveryDay(order)}</strong>
+                                    <span>{order.status}</span>
+                                </div>
+                                <strong>${order.total.toFixed(2)}</strong>
+                            </div>
+                            {#each order.items as item}
+                                <div class="history-item">
+                                    <span>{item.name}</span>
+                                    {#each orderSelections(item) as selection}
+                                        <small>{selection}</small>
+                                    {/each}
+                                </div>
+                            {/each}
+                        </div>
+                    {/each}
+                </div>
+            {/if}
+        </section>
+    </div>
+
     <!-- Customization Modal -->
+    {#if showExistingOrderModal && selectedDeliveryDayOrder}
+        <div class="modal-backdrop" on:click={() => (showExistingOrderModal = false)} on:keydown={(e) => e.key === 'Escape' && (showExistingOrderModal = false)} role="button" tabindex="-1" aria-label="Close modal"></div>
+        <div class="modal-centered">
+            <div class="modal-content">
+                <button class="modal-close" on:click={() => (showExistingOrderModal = false)} type="button">✕</button>
+                <h2>Order already exists</h2>
+                <p class="modal-description">
+                    You already have an order for {formatDeliveryDay(selectedDeliveryDayOrder)}.
+                </p>
+
+                <div class="existing-order-summary">
+                    <strong>{selectedDeliveryDayOrder.status}</strong>
+                    <span>${selectedDeliveryDayOrder.total.toFixed(2)}</span>
+                </div>
+
+                {#each selectedDeliveryDayOrder.items as item}
+                    <div class="history-item">
+                        <span>{item.name}</span>
+                        {#each orderSelections(item) as selection}
+                            <small>{selection}</small>
+                        {/each}
+                    </div>
+                {/each}
+
+                {#if existingOrderActionError}
+                    <p class="order-error">{existingOrderActionError}</p>
+                {/if}
+
+                {#if selectedDeliveryDayOrder.status === "new"}
+                    <p class="modal-description">Cancel this unconfirmed order, then submit your new order for the same delivery day.</p>
+                    <button class="cancel-order-btn" on:click={cancelExistingOrder} type="button">Cancel Current Order</button>
+                {:else}
+                    <p class="modal-description">This order has already been confirmed, so it can no longer be cancelled here.</p>
+                {/if}
+            </div>
+        </div>
+    {/if}
+
     {#if showModal && selectedProduct}
         <div class="modal-backdrop" on:click={closeModal} on:keydown={(e) => e.key === 'Escape' && closeModal()} role="button" tabindex="-1" aria-label="Close modal"></div>
         <div class="modal-centered">
@@ -726,6 +891,159 @@
         overflow-x: auto;
     }
 
+    .order-tools {
+        margin: 1.5rem 0;
+    }
+
+    .order-history {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+
+    .section-heading,
+    .drawer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .section-heading h2,
+    .drawer-header h2 {
+        margin: 0;
+    }
+
+    .drawer-toggle {
+        border: none;
+        border-radius: 6px;
+        background: #333;
+        color: white;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 0.55rem 0.85rem;
+    }
+
+    .history-list {
+        display: grid;
+        gap: 0.75rem;
+    }
+
+    .current-orders-scroll {
+        max-height: min(420px, 55vh);
+        overflow-y: auto;
+        padding-right: 0.25rem;
+        scrollbar-gutter: stable;
+    }
+
+    .current-orders-scroll::-webkit-scrollbar {
+        width: 0.55rem;
+    }
+
+    .current-orders-scroll::-webkit-scrollbar-thumb {
+        background: #c9c9c9;
+        border-radius: 999px;
+    }
+
+    .history-card {
+        background: white;
+        border: 1px solid #e8e8e8;
+        border-radius: 8px;
+        padding: 0.85rem;
+    }
+
+    .history-card.previous {
+        opacity: 0.85;
+    }
+
+    .history-header,
+    .existing-order-summary {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .history-header div {
+        display: grid;
+        gap: 0.15rem;
+    }
+
+    .history-header span,
+    .history-item small,
+    .previous-orders summary {
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .history-item {
+        display: grid;
+        gap: 0.15rem;
+        padding: 0.45rem 0;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1100;
+        background: rgba(0, 0, 0, 0.35);
+    }
+
+    .previous-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 1101;
+        width: min(420px, 100vw);
+        height: 100vh;
+        overflow-y: auto;
+        padding: 1.25rem;
+        background: white;
+        border-left: 1px solid #e8e8e8;
+        box-shadow: -8px 0 24px rgba(0, 0, 0, 0.14);
+        transform: translateX(100%);
+        transition: transform 0.2s ease;
+    }
+
+    .previous-drawer.open {
+        transform: translateX(0);
+    }
+
+    .drawer-header span {
+        color: #e76f51;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .drawer-header button {
+        width: 2rem;
+        height: 2rem;
+        border: none;
+        border-radius: 50%;
+        background: #f0f0f0;
+        cursor: pointer;
+    }
+
+    .empty.compact {
+        padding: 0.5rem 0;
+        text-align: left;
+    }
+
+    .cancel-order-btn {
+        width: 100%;
+        padding: 0.85rem 1rem;
+        background: #b42318;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 800;
+    }
+
     .menu-nav button {
         padding: 0.5rem 1rem;
         background: #f0f0f0;
@@ -839,5 +1157,55 @@
         color: #999;
         text-align: center;
         padding: 2rem;
+    }
+
+    @media (min-width: 900px) {
+        .mobile-layout {
+            padding: 2rem;
+        }
+
+        .menu-nav {
+            justify-content: center;
+        }
+
+        .menu-section,
+        .cart,
+        .order-tools {
+            max-width: 880px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .mobile-layout {
+            padding: 1rem 0.75rem 5rem;
+        }
+
+        .section-heading,
+        .history-header,
+        .cart-item,
+        .modal-footer {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .drawer-toggle,
+        .submit,
+        .add-to-cart-btn {
+            width: 100%;
+        }
+
+        .modal-centered {
+            width: calc(100% - 1rem);
+        }
+
+        .modal-content {
+            padding: 1.25rem;
+        }
+
+        .options-grid {
+            grid-template-columns: 1fr;
+        }
     }
 </style>

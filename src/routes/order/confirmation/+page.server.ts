@@ -6,15 +6,18 @@ type OrderItem = {
     name: string;
     finalPrice?: number;
     price?: number;
+    selections?: Record<string, string | string[]>;
+    displaySelections?: Array<{ label: string; value: string }>;
     note?: string;
 };
 
 type OrderRecord = {
     _id: ObjectId;
     name: string;
+    userEmail?: string;
     items: OrderItem[];
     total: number;
-    status: "new" | "confirmed" | "complete" | "closed";
+    status: "new" | "confirmed" | "complete" | "closed" | "cancelled";
     deliveryDayLabel?: string;
     deliveryDayDate?: string;
     createdAt: Date;
@@ -34,9 +37,12 @@ export const load: PageServerLoad = async ({ url }) => {
             ? {
                   id: order._id.toString(),
                   name: order.name,
+                  userEmail: order.userEmail ?? "",
                   items: order.items.map((item) => ({
                       name: item.name,
                       price: item.finalPrice ?? item.price ?? 0,
+                      selections: item.selections ?? {},
+                      displaySelections: item.displaySelections ?? [],
                       note: item.note ?? "",
                   })),
                   total: order.total,

@@ -13,6 +13,7 @@
     let dateFilter: "today" | "week" | "month" | "all" | "custom" = "today";
     let customStartDate = "";
     let customEndDate = "";
+    let deliveryDayFilter = "all";
 
     // Status filter
     type OrderStatus = "new" | "confirmed" | "complete";
@@ -172,6 +173,10 @@
             result = result.filter((order) => order.status === statusFilter);
         }
 
+        if (deliveryDayFilter !== "all") {
+            result = result.filter((order) => order.deliveryDayId === deliveryDayFilter);
+        }
+
         // Search filter
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
@@ -226,6 +231,13 @@
     $: newOrdersCount = filteredOrders.filter((o) => o.status === "new").length;
     $: confirmedOrdersCount = filteredOrders.filter((o) => o.status === "confirmed").length;
     $: completedOrdersCount = filteredOrders.filter((o) => o.status === "complete").length;
+    $: deliveryDayOptions = Array.from(
+        new Map(
+            allOrders
+                .filter((order) => order.deliveryDayId)
+                .map((order) => [order.deliveryDayId, formatDeliveryDay(order)])
+        ).entries()
+    ).map(([id, label]) => ({ id, label }));
 
     // Top items
     $: topItems = (() => {
@@ -242,7 +254,7 @@
     })();
 
     // React to filter changes AND allOrders changes
-    $: dateFilter, statusFilter, searchQuery, customStartDate, customEndDate, allOrders, applyFilters();
+    $: dateFilter, statusFilter, deliveryDayFilter, searchQuery, customStartDate, customEndDate, allOrders, applyFilters();
 
     onMount(() => {
         applyFilters();
@@ -297,7 +309,6 @@
     {/if}
 
     <!-- Filters -->
-    <!-- I'd like to add a by delivery day filter -->
     <section class="filters-section">
         <div class="filter-group">
             <label>Date Range</label>
@@ -342,6 +353,16 @@
                 <input type="date" bind:value={customEndDate} />
             </div>
         {/if}
+
+        <div class="filter-group">
+            <label>Delivery Day</label>
+            <select bind:value={deliveryDayFilter} class="search-input">
+                <option value="all">All delivery days</option>
+                {#each deliveryDayOptions as day}
+                    <option value={day.id}>{day.label}</option>
+                {/each}
+            </select>
+        </div>
 
         <div class="filter-group">
             <label>Status</label>

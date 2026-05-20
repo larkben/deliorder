@@ -2,6 +2,7 @@ import type { Actions } from "./$types";
 import { redirect, fail } from "@sveltejs/kit";
 import { db } from "$lib/server/db";
 import { getAvailableDeliveryDay, listOpenFutureDeliveryDays } from "$lib/server/deliveryDays";
+import type { ObjectId } from "mongodb";
 
 import type { PageServerLoad } from "./$types";
 
@@ -33,6 +34,27 @@ type CartItem = {
   finalPrice?: number;
 };
 
+type OrderRecord = {
+  _id: ObjectId;
+  name: string;
+  userEmail: string;
+  deliveryDayId?: string;
+  deliveryDayLabel?: string;
+  deliveryDayDate?: string;
+  items: Array<{
+    name: string;
+    finalPrice?: number;
+    price?: number;
+    selections?: Record<string, string | string[]>;
+    displaySelections?: Array<{ label: string; value: string }>;
+    note?: string;
+  }>;
+  total: number;
+  status: "new" | "confirmed" | "complete" | "closed" | "cancelled";
+  createdAt: Date;
+  cancelledAt?: Date;
+};
+
 export const load: PageServerLoad = async (event) => {
     // Get the user session
     const session = await event.locals.auth();
@@ -44,12 +66,37 @@ export const load: PageServerLoad = async (event) => {
 
     // Get menu items
     const products = await db.collection("menu_items").find({}).toArray();
+    const userEmail = session.user.email || "";
+    const userOrders = userEmail
+        ? await db
+              .collection<OrderRecord>("orders")
+              .find({ userEmail })
+              .sort({ deliveryDayDate: -1, createdAt: -1 })
+              .toArray()
+        : [];
 
     return {
         session,
         userName: session.user.name || session.user.email || "User",
-        userEmail: session.user.email || "",
+        userEmail,
         deliveryDays: await listOpenFutureDeliveryDays(),
+        orders: userOrders.map((order) => ({
+            id: order._id.toString(),
+            name: order.name,
+            deliveryDayId: order.deliveryDayId || "",
+            deliveryDayLabel: order.deliveryDayLabel || "Unassigned",
+            deliveryDayDate: order.deliveryDayDate || "",
+            status: order.status === "closed" ? "complete" : order.status,
+            total: order.total,
+            createdAt: order.createdAt.toISOString(),
+            items: (order.items || []).map((item) => ({
+                name: item.name,
+                price: item.finalPrice ?? item.price ?? 0,
+                selections: item.selections || {},
+                displaySelections: item.displaySelections || [],
+                note: item.note || "",
+            })),
+        })),
         products: products.map((p) => ({
             id: p._id.toString(),
             name: p.name,
@@ -116,6 +163,7 @@ export const actions: Actions = {
     // Validate and recalculate prices on server side (security measure)
     const validatedItems = items.map((item) => {
       let calculatedPrice = item.price;
+      const displaySelections: Array<{ label: string; value: string }> = [];
 
       // Recalculate price based on selections to prevent client tampering
       if (item.customizations && item.selections) {
@@ -126,12 +174,14 @@ export const actions: Actions = {
             const option = customization.options.find((o) => o.value === selection);
             if (option) {
               calculatedPrice += option.price;
+              displaySelections.push({ label: customization.label, value: option.label });
             }
           } else if (customization.type === "multiple" && Array.isArray(selection)) {
             selection.forEach((value) => {
               const option = customization.options.find((o) => o.value === value);
               if (option) {
                 calculatedPrice += option.price;
+                displaySelections.push({ label: customization.label, value: option.label });
               }
             });
           }
@@ -143,6 +193,7 @@ export const actions: Actions = {
         basePrice: item.price,
         finalPrice: calculatedPrice,
         selections: item.selections || {},
+        displaySelections,
         note: item.note || "",
         section: item.section,
         subsection: item.subsection,

@@ -1,4 +1,6 @@
 import { db } from "$lib/server/db";
+import { env } from "$env/dynamic/private";
+import { dev } from "$app/environment";
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import type { Cookies } from "@sveltejs/kit";
 
@@ -48,13 +50,19 @@ function setSessionCookie(cookies: Cookies, token: string) {
     cookies.set(SESSION_COOKIE, token, {
         path: "/",
         httpOnly: true,
-        sameSite: "lax",
-        secure: false,
+        sameSite: "strict",
+        secure: !dev,
         maxAge: SESSION_MAX_AGE,
     });
 }
 
 export async function ensureDefaultAdmin() {
+    const defaultPassword = env.ADMIN_DEFAULT_PASSWORD ?? (dev ? "secret123" : "");
+
+    if (!defaultPassword) {
+        return;
+    }
+
     const users = db.collection<AdminUser>("admin_users");
     const existing = await users.findOne({ username: "admin" });
 
@@ -63,7 +71,7 @@ export async function ensureDefaultAdmin() {
     }
 
     const now = new Date();
-    const { passwordHash, salt } = hashPassword("secret123");
+    const { passwordHash, salt } = hashPassword(defaultPassword);
 
     await users.insertOne({
         username: "admin",
@@ -141,6 +149,10 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
 }
 
 export async function upsertAdminUser(username: string, password: string) {
+    if (password.length < 8) {
+        throw new Error("Admin passwords must be at least 8 characters.");
+    }
+
     const now = new Date();
     const { passwordHash, salt } = hashPassword(password);
 
@@ -160,4 +172,3 @@ export async function upsertAdminUser(username: string, password: string) {
         { upsert: true },
     );
 }
-
