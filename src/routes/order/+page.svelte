@@ -195,7 +195,12 @@
         formData.append("deliveryDayId", selectedDeliveryDayId);
         formData.append("items", JSON.stringify(cart));
 
-        const res = await fetch("/order", { method: "POST", body: formData });
+        const res = await fetch("/order", { method: "POST", body: formData, redirect: "follow" });
+
+        if (res.redirected) {
+          goto(new URL(res.url).pathname + new URL(res.url).search);
+          return;
+        }
 
         if (!res.ok) {
             orderError = res.status === 409
