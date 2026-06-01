@@ -8,6 +8,7 @@ type OrderItem = {
   finalPrice?: number;
   price?: number;
   selections?: Record<string, string | string[]>;
+  displaySelections?: { label: string; value: string }[];
   note?: string;
   section?: string;
   subsection?: string;
@@ -49,6 +50,7 @@ export const load: PageServerLoad = async () => {
       finalPrice: item.finalPrice || item.price || 0,
       price: item.price || item.finalPrice || item.basePrice || 0,
       selections: item.selections || {},
+      displaySelections: item.displaySelections || [],
       note: item.note || "",
       section: item.section || "",
       subsection: item.subsection || "",

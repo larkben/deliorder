@@ -70,14 +70,19 @@
                 {/each}
             </div>
 
-            <a class="primary-link" href="/order">Start Another Order</a>
+            <div class="confirmation-actions">
+                <a class="secondary-link" href="/order">Back to Menu</a>
+                <a class="primary-link" href="/order">Start Another Order</a>
+            </div>
         </section>
     {:else}
         <section class="confirmation">
             <p class="eyebrow">Order Status</p>
             <h1>We could not find that order</h1>
             <p class="message">The confirmation link may be missing its order number.</p>
-            <a class="primary-link" href="/order">Back to Menu</a>
+            <div class="confirmation-actions">
+                <a class="primary-link" href="/order">Back to Menu</a>
+            </div>
         </section>
     {/if}
 </main>
@@ -173,19 +178,41 @@
         gap: 0.25rem;
     }
 
-    .primary-link {
+    .confirmation-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .primary-link,
+    .secondary-link {
         display: inline-block;
         padding: 0.85rem 1.25rem;
-        background: #e76f51;
-        color: white;
         border-radius: 8px;
         font-weight: 700;
         text-decoration: none;
     }
 
+    .primary-link {
+        background: #e76f51;
+        color: white;
+    }
+
+    .secondary-link {
+        background: #f8f9fa;
+        border: 1px solid #ddd;
+        color: #333;
+    }
+
     @media (max-width: 640px) {
         .summary {
             grid-template-columns: 1fr;
+        }
+
+        .primary-link,
+        .secondary-link {
+            text-align: center;
+            width: 100%;
         }
     }
 </style>

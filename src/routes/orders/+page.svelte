@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { goto } from "$app/navigation";
+    import { formatDisplaySelections, selectionText } from "$lib/orderDisplay";
 
     export let data;
     let allOrders = data.orders;
@@ -225,6 +225,22 @@
         })}`;
     }
 
+    function itemSelections(item: any) {
+        return formatDisplaySelections(item.displaySelections, item.selections).map(selectionText);
+    }
+
+    function nextStatus(status: string | undefined): OrderStatus | null {
+        if (status === "new") return "confirmed";
+        if (status === "confirmed") return "complete";
+        return null;
+    }
+
+    function nextStatusLabel(status: string | undefined) {
+        if (status === "new") return "Confirm payment";
+        if (status === "confirmed") return "Mark complete";
+        return "Complete";
+    }
+
     // Analytics - make reactive to allOrders changes
     $: totalRevenue = filteredOrders.reduce((sum, o) => sum + o.total, 0);
     $: averageOrderValue = filteredOrders.length > 0 ? totalRevenue / filteredOrders.length : 0;
@@ -265,6 +281,7 @@
     <header class="page-header">
         <h1>Orders Dashboard</h1>
         <div class="header-actions">
+            <a href="/admin" class="btn-secondary">Back to Admin</a>
             <a href="/order" class="btn-primary">+ New Order</a>
         </div>
     </header>
@@ -412,6 +429,7 @@
         <div class="orders-list">
             {#each filteredOrders as order}
                 {@const progress = getOrderProgress(order)}
+                {@const next = nextStatus(order.status)}
                 <div 
                     class="order-card" 
                     class:completed={order.status === "complete"}
@@ -444,16 +462,10 @@
                                 </div>
                                 <div class="item-details" class:completed={item.completed}>
                                     <strong>{item.name}</strong>
-                                    {#if item.selections && Object.keys(item.selections).length > 0}
+                                    {#if itemSelections(item).length > 0}
                                         <div class="item-customizations">
-                                            {#each Object.entries(item.selections) as [key, value]}
-                                                {#if typeof value === "string" && value}
-                                                    <span class="customization-tag">{value}</span>
-                                                {:else if Array.isArray(value) && value.length > 0}
-                                                    {#each value as v}
-                                                        <span class="customization-tag">{v}</span>
-                                                    {/each}
-                                                {/if}
+                                            {#each itemSelections(item) as selection}
+                                                <span class="customization-tag">{selection}</span>
                                             {/each}
                                         </div>
                                     {/if}
@@ -472,9 +484,13 @@
                             <span class="progress-text">{progress}% Complete</span>
                         </div>
                         <div class="status-actions" on:click|stopPropagation>
-                            <button class:active={order.status === "new"} on:click={() => updateStatus(order._id, "new")} type="button">New</button>
-                            <button class:active={order.status === "confirmed"} on:click={() => updateStatus(order._id, "confirmed")} type="button">Confirmed</button>
-                            <button class:active={order.status === "complete"} on:click={() => updateStatus(order._id, "complete")} type="button">Complete</button>
+                            {#if next}
+                                <button on:click={() => updateStatus(order._id, next)} type="button">
+                                    {nextStatusLabel(order.status)}
+                                </button>
+                            {:else}
+                                <span class="done-label">Ready</span>
+                            {/if}
                         </div>
                     </div>
                 </div>
@@ -485,6 +501,7 @@
     <!-- Modal -->
     {#if showModal && selectedOrder}
         {@const selectedOrderId = selectedOrder._id}
+        {@const selectedNext = nextStatus(selectedOrder.status)}
         <div
             class="modal-backdrop"
             on:click={closeModal}
@@ -516,16 +533,10 @@
                         </button>
                         <div class="item-info">
                             <strong class:completed={item.completed}>{item.name}</strong>
-                            {#if item.selections && Object.keys(item.selections).length > 0}
+                            {#if itemSelections(item).length > 0}
                                 <div class="item-customizations">
-                                    {#each Object.entries(item.selections) as [key, value]}
-                                        {#if typeof value === "string" && value}
-                                            <span class="customization-tag">{value}</span>
-                                        {:else if Array.isArray(value) && value.length > 0}
-                                            {#each value as v}
-                                                <span class="customization-tag">{v}</span>
-                                            {/each}
-                                        {/if}
+                                    {#each itemSelections(item) as selection}
+                                        <span class="customization-tag">{selection}</span>
                                     {/each}
                                 </div>
                             {/if}
@@ -543,9 +554,11 @@
             </div>
 
             <div class="modal-actions">
-                <button on:click={() => updateStatus(selectedOrderId, "new")} class="btn-status" class:active={selectedOrder.status === "new"}>New</button>
-                <button on:click={() => updateStatus(selectedOrderId, "confirmed")} class="btn-status" class:active={selectedOrder.status === "confirmed"}>Confirmed</button>
-                <button on:click={() => updateStatus(selectedOrderId, "complete")} class="btn-status" class:active={selectedOrder.status === "complete"}>Complete</button>
+                {#if selectedNext}
+                    <button on:click={() => updateStatus(selectedOrderId, selectedNext)} class="btn-status">
+                        {nextStatusLabel(selectedOrder.status)}
+                    </button>
+                {/if}
                 <button on:click={closeModal} class="btn-primary">Close</button>
             </div>
         </div>
@@ -572,6 +585,13 @@
         margin: 0;
     }
 
+    .header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: flex-end;
+    }
+
     .btn-primary {
         padding: 0.75rem 1.5rem;
         background: #e76f51;
@@ -586,6 +606,22 @@
 
     .btn-primary:hover {
         background: #d45a3e;
+    }
+
+    .btn-secondary {
+        padding: 0.75rem 1.25rem;
+        background: white;
+        color: #333;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-weight: 700;
+        text-decoration: none;
+        display: inline-block;
+    }
+
+    .btn-secondary:hover {
+        border-color: #e76f51;
+        color: #e76f51;
     }
 
     /* Analytics */
@@ -893,6 +929,18 @@
     .status-actions button.active {
         background: #2a9d8f;
         color: white;
+    }
+
+    .done-label {
+        align-items: center;
+        background: #eef8f6;
+        border-radius: 6px;
+        color: #238276;
+        display: inline-flex;
+        font-weight: 800;
+        justify-content: center;
+        min-width: 90px;
+        padding: 0.55rem;
     }
 
     .progress-bar {

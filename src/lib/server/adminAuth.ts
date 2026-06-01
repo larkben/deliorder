@@ -11,6 +11,7 @@ type AdminUser = {
     username: string;
     passwordHash: string;
     salt: string;
+    active?: boolean;
     createdAt: Date;
     updatedAt: Date;
 };
@@ -24,6 +25,7 @@ type AdminSession = {
 
 export type AdminUserSummary = {
     username: string;
+    active: boolean;
     createdAt: string;
     updatedAt: string;
 };
@@ -77,6 +79,7 @@ export async function ensureDefaultAdmin() {
         username: "admin",
         passwordHash,
         salt,
+        active: true,
         createdAt: now,
         updatedAt: now,
     });
@@ -85,7 +88,10 @@ export async function ensureDefaultAdmin() {
 export async function loginAdmin(username: string, password: string, cookies: Cookies) {
     await ensureDefaultAdmin();
 
-    const user = await db.collection<AdminUser>("admin_users").findOne({ username });
+    const user = await db.collection<AdminUser>("admin_users").findOne({
+        username,
+        active: { $ne: false },
+    });
 
     if (!user || !verifyPassword(password, user)) {
         return null;
@@ -137,12 +143,13 @@ export async function listAdminUsers(): Promise<AdminUserSummary[]> {
 
     const users = await db
         .collection<AdminUser>("admin_users")
-        .find({}, { projection: { username: 1, createdAt: 1, updatedAt: 1 } })
+        .find({}, { projection: { username: 1, active: 1, createdAt: 1, updatedAt: 1 } })
         .sort({ username: 1 })
         .toArray();
 
     return users.map((user) => ({
         username: user.username,
+        active: user.active !== false,
         createdAt: user.createdAt.toISOString(),
         updatedAt: user.updatedAt.toISOString(),
     }));
@@ -162,6 +169,7 @@ export async function upsertAdminUser(username: string, password: string) {
             $set: {
                 passwordHash,
                 salt,
+                active: true,
                 updatedAt: now,
             },
             $setOnInsert: {
@@ -171,4 +179,18 @@ export async function upsertAdminUser(username: string, password: string) {
         },
         { upsert: true },
     );
+}
+
+export async function deactivateAdminUser(username: string) {
+    await db.collection<AdminUser>("admin_users").updateOne(
+        { username },
+        {
+            $set: {
+                active: false,
+                updatedAt: new Date(),
+            },
+        },
+    );
+
+    await db.collection<AdminSession>("admin_sessions").deleteMany({ username });
 }

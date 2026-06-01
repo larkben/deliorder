@@ -1,6 +1,6 @@
 import { redirect, fail } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types";
-import { listAdminUsers, logoutAdmin, upsertAdminUser } from "$lib/server/adminAuth";
+import { deactivateAdminUser, listAdminUsers, logoutAdmin, upsertAdminUser } from "$lib/server/adminAuth";
 import { db } from "$lib/server/db";
 
 type OrderRecord = {
@@ -55,6 +55,25 @@ export const actions: Actions = {
         await upsertAdminUser(username, password);
 
         return { userSuccess: `Saved admin login for ${username}.` };
+    },
+    deactivateAdmin: async ({ request, locals }) => {
+        if (!locals.adminUser) {
+            throw redirect(303, "/");
+        }
+
+        const username = (await request.formData()).get("username")?.toString().trim() ?? "";
+
+        if (!username) {
+            return fail(400, { userError: "Choose an admin login to deactivate." });
+        }
+
+        if (username === locals.adminUser.username) {
+            return fail(400, { userError: "You cannot deactivate the login you are currently using." });
+        }
+
+        await deactivateAdminUser(username);
+
+        return { userSuccess: `Deactivated admin login for ${username}.` };
     },
     logout: async ({ cookies }) => {
         await logoutAdmin(cookies);

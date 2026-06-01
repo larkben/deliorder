@@ -26,6 +26,7 @@ export const PATCH: RequestHandler = async ({ params, locals }) => {
         {
             $set: {
                 status: "cancelled",
+                activeOrder: false,
                 cancelledAt: new Date(),
                 updatedAt: new Date(),
             },

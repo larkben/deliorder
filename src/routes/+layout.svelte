@@ -1,6 +1,5 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
-	import NavControls from '$lib/NavControls.svelte';
 
 	let { children } = $props();
 </script>
@@ -9,7 +8,6 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<NavControls />
 {@render children()}
 
 <style>

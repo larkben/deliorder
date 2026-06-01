@@ -1,8 +1,8 @@
 import type { Actions } from "./$types";
 import { redirect, fail } from "@sveltejs/kit";
+import { MongoServerError, ObjectId } from "mongodb";
 import { db } from "$lib/server/db";
 import { getAvailableDeliveryDay, listOpenFutureDeliveryDays } from "$lib/server/deliveryDays";
-import type { ObjectId } from "mongodb";
 
 import type { PageServerLoad } from "./$types";
 
@@ -34,6 +34,16 @@ type CartItem = {
   finalPrice?: number;
 };
 
+type MenuItem = {
+  _id: ObjectId;
+  name: string;
+  price: number;
+  description?: string;
+  section: string;
+  subsection?: string;
+  customizations?: Customization[];
+};
+
 type OrderRecord = {
   _id: ObjectId;
   name: string;
@@ -50,6 +60,7 @@ type OrderRecord = {
     note?: string;
   }>;
   total: number;
+  activeOrder?: boolean;
   status: "new" | "confirmed" | "complete" | "closed" | "cancelled";
   createdAt: Date;
   cancelledAt?: Date;
@@ -140,7 +151,7 @@ export const actions: Actions = {
     const existingOrder = await db.collection("orders").findOne({
       userEmail,
       deliveryDayId,
-      status: { $ne: "cancelled" },
+      activeOrder: true,
     });
 
     if (existingOrder) {
@@ -160,45 +171,98 @@ export const actions: Actions = {
       return fail(400, { error: "Invalid items format" });
     }
 
-    // Validate and recalculate prices on server side (security measure)
-    const validatedItems = items.map((item) => {
-      let calculatedPrice = item.price;
-      const displaySelections: Array<{ label: string; value: string }> = [];
+    if (!Array.isArray(items) || items.length === 0) {
+      return fail(400, { error: "No items in order" });
+    }
 
-      // Recalculate price based on selections to prevent client tampering
-      if (item.customizations && item.selections) {
-        item.customizations.forEach((customization) => {
-          const selection = item.selections![customization.id];
+    const itemIds = items.map((item) => item.id).filter((id) => ObjectId.isValid(id));
 
-          if (customization.type === "single" && typeof selection === "string") {
-            const option = customization.options.find((o) => o.value === selection);
-            if (option) {
-              calculatedPrice += option.price;
-              displaySelections.push({ label: customization.label, value: option.label });
-            }
-          } else if (customization.type === "multiple" && Array.isArray(selection)) {
-            selection.forEach((value) => {
-              const option = customization.options.find((o) => o.value === value);
-              if (option) {
-                calculatedPrice += option.price;
-                displaySelections.push({ label: customization.label, value: option.label });
-              }
-            });
-          }
-        });
+    if (itemIds.length !== items.length) {
+      return fail(400, { error: "One or more menu items are invalid" });
+    }
+
+    const menuItems = await db
+      .collection<MenuItem>("menu_items")
+      .find({ _id: { $in: itemIds.map((id) => new ObjectId(id)) } })
+      .toArray();
+    const menuById = new Map(menuItems.map((item) => [item._id.toString(), item]));
+
+    const validatedItems = [];
+
+    for (const item of items) {
+      const menuItem = menuById.get(item.id);
+
+      if (!menuItem) {
+        return fail(400, { error: "One or more menu items are no longer available" });
       }
 
-      return {
-        name: item.name,
-        basePrice: item.price,
+      let calculatedPrice = menuItem.price;
+      const displaySelections: Array<{ label: string; value: string }> = [];
+      const storedSelections: Record<string, string | string[]> = {};
+      const selections = item.selections ?? {};
+
+      for (const customization of menuItem.customizations ?? []) {
+        const selection = selections[customization.id];
+
+        if (customization.required) {
+          const isEmpty =
+            customization.type === "single"
+              ? !selection || typeof selection !== "string"
+              : !Array.isArray(selection) || selection.length === 0;
+
+          if (isEmpty) {
+            return fail(400, { error: `Choose ${customization.label} for ${menuItem.name}` });
+          }
+        }
+
+        if (customization.type === "single") {
+          if (typeof selection !== "string" || !selection) {
+            continue;
+          }
+
+          const option = customization.options.find((o) => o.value === selection);
+
+          if (!option) {
+            return fail(400, { error: `Invalid ${customization.label} for ${menuItem.name}` });
+          }
+
+          calculatedPrice += option.price;
+          storedSelections[customization.id] = selection;
+          displaySelections.push({ label: customization.label, value: option.label });
+        } else {
+          if (!Array.isArray(selection) || selection.length === 0) {
+            continue;
+          }
+
+          const validValues: string[] = [];
+
+          for (const value of [...new Set(selection)]) {
+            const option = customization.options.find((o) => o.value === value);
+
+            if (!option) {
+              return fail(400, { error: `Invalid ${customization.label} for ${menuItem.name}` });
+            }
+
+            calculatedPrice += option.price;
+            validValues.push(value);
+            displaySelections.push({ label: customization.label, value: option.label });
+          }
+
+          storedSelections[customization.id] = validValues;
+        }
+      }
+
+      validatedItems.push({
+        name: menuItem.name,
+        basePrice: menuItem.price,
         finalPrice: calculatedPrice,
-        selections: item.selections || {},
+        selections: storedSelections,
         displaySelections,
-        note: item.note || "",
-        section: item.section,
-        subsection: item.subsection,
-      };
-    });
+        note: (item.note || "").slice(0, 500),
+        section: menuItem.section,
+        subsection: menuItem.subsection,
+      });
+    }
 
     // Calculate total from validated prices
     const total = validatedItems.reduce(
@@ -206,17 +270,28 @@ export const actions: Actions = {
       0
     );
 
-    const result = await db.collection("orders").insertOne({
-      name,
-      userEmail,
-      deliveryDayId,
-      deliveryDayLabel: deliveryDay.label,
-      deliveryDayDate: deliveryDay.date,
-      items: validatedItems,
-      total,
-      status: "new",
-      createdAt: new Date(),
-    });
+    let result;
+
+    try {
+      result = await db.collection("orders").insertOne({
+        name,
+        userEmail,
+        deliveryDayId,
+        deliveryDayLabel: deliveryDay.label,
+        deliveryDayDate: deliveryDay.date,
+        items: validatedItems,
+        total,
+        activeOrder: true,
+        status: "new",
+        createdAt: new Date(),
+      });
+    } catch (error) {
+      if (error instanceof MongoServerError && error.code === 11000) {
+        return fail(409, { error: "You already have an order for this delivery day" });
+      }
+
+      throw error;
+    }
 
     throw redirect(303, `/order/confirmation?id=${result.insertedId.toString()}`);
   },

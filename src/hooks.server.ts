@@ -1,11 +1,12 @@
 import { SvelteKitAuth } from "@auth/sveltekit";
 import Google from "@auth/sveltekit/providers/google";
 import { env } from "$env/dynamic/private";
-import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, AUTH_SECRET } from "$env/static/private";
 import { redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
 import type { Handle } from "@sveltejs/kit";
 import { getAdminSession } from "$lib/server/adminAuth";
+import { ensureDatabaseSetup } from "$lib/server/db";
+import { validateRuntimeConfig } from "$lib/server/runtimeChecks";
 
 const ALLOWED_EMAIL_DOMAINS = (env.ALLOWED_EMAIL_DOMAINS ?? "")
     .split(",")
@@ -22,6 +23,9 @@ function isAllowedEmail(email: string | null | undefined) {
 }
 
 async function authorization({ event, resolve }: Parameters<Handle>[0]) {
+    validateRuntimeConfig();
+    await ensureDatabaseSetup();
+
     event.locals.adminUser = await getAdminSession(event.cookies);
 
     // Public routes that don't need auth
@@ -62,11 +66,11 @@ export const handle: Handle = sequence(
     SvelteKitAuth({
         providers: [
             Google({
-                clientId: GOOGLE_CLIENT_ID,
-                clientSecret: GOOGLE_CLIENT_SECRET,
+                clientId: env.GOOGLE_CLIENT_ID,
+                clientSecret: env.GOOGLE_CLIENT_SECRET,
             }),
         ],
-        secret: AUTH_SECRET,
+        secret: env.AUTH_SECRET,
         trustHost: true,
         callbacks: {
             async signIn({ user }) {

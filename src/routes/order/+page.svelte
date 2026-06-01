@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import { goto } from "$app/navigation";
     import { formatDisplaySelections, selectionText } from "$lib/orderDisplay";
 
@@ -216,25 +216,39 @@
         goto(`${new URL(res.url).pathname}${new URL(res.url).search}`);
     }
 
-    async function cancelExistingOrder() {
-        if (!selectedDeliveryDayOrder || selectedDeliveryDayOrder.status !== "new") return;
+    async function cancelOrder(order: (typeof userOrders)[number]) {
+        if (!order || order.status !== "new") return false;
+        const targetOrderId = order.id;
 
         existingOrderActionError = "";
-        const res = await fetch(`/api/my-orders/${selectedDeliveryDayOrder.id}/cancel`, {
+        const res = await fetch(`/api/my-orders/${targetOrderId}/cancel`, {
             method: "PATCH",
         });
 
         if (!res.ok) {
             existingOrderActionError = "Only unconfirmed orders can be cancelled.";
-            return;
+            return false;
         }
 
         userOrders = userOrders.map((order) =>
-            order.id === selectedDeliveryDayOrder.id
+            order.id === targetOrderId
                 ? { ...order, status: "cancelled" }
                 : order,
         );
+
+        return true;
+    }
+
+    async function cancelExistingOrder() {
+        if (!selectedDeliveryDayOrder || selectedDeliveryDayOrder.status !== "new") return;
+
+        const cancelled = await cancelOrder(selectedDeliveryDayOrder);
+
+        if (!cancelled) return;
+
         showExistingOrderModal = false;
+        await tick();
+        await submitOrder();
     }
 
     function orderSelections(item: (typeof userOrders)[number]["items"][number]) {
@@ -307,7 +321,10 @@
 <main class="mobile-layout">
 
     <div class="user-header">
-        <h1>Menu</h1>
+        <div>
+            <a class="back-link" href="/">Back to Home</a>
+            <h1>Menu</h1>
+        </div>
     </div>
 
     <label>
@@ -522,6 +539,11 @@
                                     {/each}
                                 </div>
                             {/each}
+                            {#if order.status === "new"}
+                                <button class="cancel-inline-btn" type="button" on:click={() => cancelOrder(order)}>
+                                    Cancel unconfirmed order
+                                </button>
+                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -559,8 +581,8 @@
                 {/if}
 
                 {#if selectedDeliveryDayOrder.status === "new"}
-                    <p class="modal-description">Cancel this unconfirmed order, then submit your new order for the same delivery day.</p>
-                    <button class="cancel-order-btn" on:click={cancelExistingOrder} type="button">Cancel Current Order</button>
+                    <p class="modal-description">Cancel this unconfirmed order and submit the new cart for the same delivery day.</p>
+                    <button class="cancel-order-btn" on:click={cancelExistingOrder} type="button">Cancel and Submit New Order</button>
                 {:else}
                     <p class="modal-description">This order has already been confirmed, so it can no longer be cancelled here.</p>
                 {/if}
@@ -856,6 +878,31 @@
         padding: 1rem;
     }
 
+    .user-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .user-header h1 {
+        margin: 0.2rem 0 0;
+        text-align: left;
+    }
+
+    .back-link {
+        color: #666;
+        display: inline-flex;
+        font-size: 0.92rem;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .back-link:hover {
+        color: #e76f51;
+    }
+
     h1 {
         text-align: center;
         margin-bottom: 1.5rem;
@@ -1038,7 +1085,8 @@
         text-align: left;
     }
 
-    .cancel-order-btn {
+    .cancel-order-btn,
+    .cancel-inline-btn {
         width: 100%;
         padding: 0.85rem 1rem;
         background: #b42318;
@@ -1047,6 +1095,11 @@
         border-radius: 8px;
         cursor: pointer;
         font-weight: 800;
+    }
+
+    .cancel-inline-btn {
+        margin-top: 0.75rem;
+        padding: 0.65rem 0.8rem;
     }
 
     .menu-nav button {

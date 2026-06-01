@@ -104,9 +104,17 @@
                 <div class="user-row">
                     <div>
                         <strong>{user.username}</strong>
-                        <span>Updated {new Date(user.updatedAt).toLocaleDateString()}</span>
+                        <span>{user.active ? "Active" : "Inactive"} · Updated {new Date(user.updatedAt).toLocaleDateString()}</span>
                     </div>
-                    <span class="password-note">Password hidden</span>
+                    <div class="user-actions">
+                        <span class="password-note">Password hidden</span>
+                        {#if user.active && user.username !== data.adminUser.username}
+                            <form method="POST" action="?/deactivateAdmin" use:enhance>
+                                <input type="hidden" name="username" value={user.username} />
+                                <button class="text-danger" type="submit">Deactivate</button>
+                            </form>
+                        {/if}
+                    </div>
                 </div>
             {/each}
         </div>
@@ -309,11 +317,32 @@
         font-size: 0.9rem;
     }
 
+    .user-actions {
+        align-items: end;
+        display: grid;
+        gap: 0.4rem;
+        justify-items: end;
+    }
+
+    .text-danger {
+        background: none;
+        border: none;
+        color: #b42318;
+        cursor: pointer;
+        font-weight: 700;
+        padding: 0;
+    }
+
     @media (max-width: 760px) {
         .admin-header,
         .user-row {
             align-items: stretch;
             flex-direction: column;
+        }
+
+        .user-actions {
+            align-items: start;
+            justify-items: start;
         }
 
         .quick-links,
